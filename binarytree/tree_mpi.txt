@@ -1,0 +1,9 @@
+Tree Depth 24, numP 32
+10 : Elapsed time (COUNT Sequentialy) =  0.214388
+10 : Elapsed Time (COUNT OpenMP) = 0.013333
+10 : Full tree traversal COUNT(elements < 0.50) = 8387124
+
+10 : Elapsed Time (COUNT MPI_Reduce) = 0.007251
+10 : MPI_Reduce (subtrees at depth==5) COUNT(elements < 0.50) = 8387124
+
+10 : SPEEDUP MPI vs Sequential 29.57, MPI vs OpenMP 1.84
