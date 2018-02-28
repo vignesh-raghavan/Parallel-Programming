@@ -1,0 +1,87 @@
+Threads running in parallel at depth == 5
+TID = 04
+TID = 02
+TID = 07
+TID = 10
+TID = 16
+TID = 05
+TID = 21
+TID = 36
+TID = 31
+TID = 03
+TID = 34
+TID = 25
+TID = 28
+TID = 23
+TID = 29
+TID = 15
+TID = 09
+TID = 38
+TID = 08
+TID = 24
+TID = 01
+TID = 14
+TID = 37
+TID = 27
+TID = 33
+TID = 26
+TID = 35
+TID = 30
+TID = 22
+TID = 12
+TID = 13
+TID = 18
+
+
+Elapsed Time (CREATE Parallely) = 5.219129
+
+Threads running in parallel at depth == 5
+TID = 38
+TID = 20
+TID = 01
+TID = 17
+TID = 21
+TID = 29
+TID = 33
+TID = 27
+TID = 26
+TID = 10
+TID = 04
+TID = 03
+TID = 23
+TID = 09
+TID = 28
+TID = 00
+TID = 12
+TID = 18
+TID = 39
+TID = 13
+TID = 11
+TID = 38
+TID = 21
+TID = 32
+TID = 33
+TID = 35
+TID = 04
+TID = 37
+TID = 24
+TID = 16
+TID = 17
+TID = 10
+
+
+Elapsed Time (COUNT Parallely) = 0.013333
+
+Number of Items with value < 0.50 is 8387124
+
+
+
+Elapsed Time (COUNT Sequentialy) = 0.194760
+
+Number of Items with value < 0.50 is 8387124
+
+
+
+SPEEDUP (PARALLEL COUNTING vs SEQUENTIAL COUNTING) = 14.607369
+
+Total Threads Running = 40
