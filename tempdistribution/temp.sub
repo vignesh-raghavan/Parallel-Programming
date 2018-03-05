@@ -1,0 +1,5 @@
+#!/bin/sh -l
+
+cd $PBS_O_WORKDIR
+
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 1  ./temp > temp.o
