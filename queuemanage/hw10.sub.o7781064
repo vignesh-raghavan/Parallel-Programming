@@ -1,0 +1,63 @@
+
+
+W = 1, numP = 16
+
+00 : Hello World
+00 : DONE! in 8.460251s
+01 : DONE! in 8.731141s
+02 : DONE! in 9.265349s
+03 : DONE! in 9.079310s
+04 : DONE! in 9.020870s
+05 : DONE! in 8.460501s
+06 : DONE! in 9.215494s
+07 : DONE! in 9.157705s
+08 : DONE! in 8.506696s
+09 : DONE! in 8.881016s
+10 : DONE! in 8.648172s
+11 : DONE! in 8.757949s
+12 : DONE! in 8.806241s
+13 : DONE! in 8.538050s
+14 : DONE! in 8.869152s
+15 : DONE! in 8.878973s
+
+
+W = 4, numP = 16
+
+00 : Hello World
+00 : DONE! in 7.797166s
+01 : DONE! in 8.914155s
+02 : DONE! in 7.894915s
+03 : DONE! in 9.059104s
+04 : DONE! in 8.249531s
+05 : DONE! in 9.239457s
+06 : DONE! in 9.051043s
+07 : DONE! in 9.535603s
+08 : DONE! in 9.262222s
+09 : DONE! in 7.797386s
+10 : DONE! in 9.335867s
+11 : DONE! in 9.087556s
+12 : DONE! in 9.925333s
+13 : DONE! in 8.112075s
+14 : DONE! in 8.390205s
+15 : DONE! in 8.962836s
+
+
+W = 16, numP = 16
+
+00 : Hello World
+00 : DONE! in 7.371794s
+01 : DONE! in 8.068476s
+02 : DONE! in 8.788775s
+03 : DONE! in 7.958215s
+04 : DONE! in 7.372000s
+05 : DONE! in 14.554196s
+06 : DONE! in 7.900462s
+07 : DONE! in 8.467560s
+08 : DONE! in 8.405679s
+09 : DONE! in 8.215291s
+10 : DONE! in 7.618138s
+11 : DONE! in 10.147024s
+12 : DONE! in 7.829758s
+13 : DONE! in 10.310014s
+14 : DONE! in 8.511311s
+15 : DONE! in 8.669163s
