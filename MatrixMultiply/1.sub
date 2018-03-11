@@ -1,0 +1,7 @@
+#!/bin/sh -l
+
+cd $PBS_O_WORKDIR
+
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 4  ./1 3 > 1_4.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 9  ./1 3 > 1_9.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 16 ./1 3 > 1_16.o
