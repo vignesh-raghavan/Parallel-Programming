@@ -1,0 +1,9 @@
+
+
+numP=4, N=100000
+
+00 : Elapsed Time is 0.000092s
+pid 00 has gsum 100000
+pid 01 has gsum 100000
+pid 02 has gsum 100000
+pid 03 has gsum 100000
