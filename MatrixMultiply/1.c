@@ -103,7 +103,7 @@ int main(int argc, char* argv[])
 
    int *A, *B, *C;
    int *A_t, *B_t;
-   double time1;
+   double time1, time2;
 
 	int R_color, C_color;
    MPI_Comm R_comm, C_comm;
@@ -177,22 +177,22 @@ int main(int argc, char* argv[])
        Z = (int*) malloc(p*N*N*sizeof(int));
 	}
 
-	MPI_Barrier(MPI_COMM_WORLD);
-	time1 = MPI_Wtime();
 
 	MPI_Gatherv(A, (N*N), MPI_INT, X, rcount, disp, blocktype, 0, MPI_COMM_WORLD); // Gather A subblocks.
 	MPI_Gatherv(B, (N*N), MPI_INT, Y, rcount, disp, blocktype, 0, MPI_COMM_WORLD); // Gather B subblocks.
 
 	if(gpid == 0)
 	{
+	   time2 = MPI_Wtime();
+		
 		mulMatrix(X, Y, Z, (iter*N)); // Compute Result Matrix Sequentially for Verification.
 	
-		time1 = MPI_Wtime() - time1;
-		printf("%02d : Elapsed Time is %fs\n", gpid, time1);
+		time2 = MPI_Wtime() - time2;
+		printf("%02d : Elapsed Time (SERIAL) is   %fs\n", gpid, time2);
 		
-		printMatrix(X, (iter*N), "X", gpid);
-	   printMatrix(Y, (iter*N), "Y", gpid);
-	   printMatrix(Z, (iter*N), "Z", gpid);
+		//printMatrix(X, (iter*N), "X", gpid);
+	   //printMatrix(Y, (iter*N), "Y", gpid);
+	   //printMatrix(Z, (iter*N), "Z", gpid);
 		free(X);
 		free(Y);
 	}
@@ -258,9 +258,10 @@ int main(int argc, char* argv[])
 	time1 = MPI_Wtime() - time1;
 	
 	MPI_Gatherv(C, (N*N), MPI_INT, Z, rcount, disp, blocktype, 0, MPI_COMM_WORLD); // Gather C subblocks.
-	if(gpid == 0) printMatrix(Z, (iter*N), "C", gpid);
+	//if(gpid == 0) printMatrix(Z, (iter*N), "C", gpid);
 
-	if(gpid == 0) printf("%02d : Elapsed Time is %fs\n", gpid, time1);
+	if(gpid == 0) printf("%02d : Elapsed Time (PARALLEL) is %fs\n", gpid, time1);
+	if(gpid == 0) printf("%02d : SPEEDUP (Serial vs Parallel) is %f\n", gpid, time2/time1);
 
 	MPI_Barrier(MPI_COMM_WORLD);
    MPI_Finalize();

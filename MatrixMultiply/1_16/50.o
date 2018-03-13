@@ -1,0 +1,7 @@
+
+
+numP=16, N=50
+
+00 : Elapsed Time (SERIAL) is   0.037145s
+00 : Elapsed Time (PARALLEL) is 0.002732s
+00 : SPEEDUP (Serial vs Parallel) is 13.596038
