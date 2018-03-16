@@ -1,0 +1,7 @@
+
+
+Active Threads=4, N=10
+
+Elapsed Time (SERIAL) is 0.000291
+Elapsed Time (PARALLEL) is 0.000200
+SPEEDUP (Serial vs Parallel) is 1.454497

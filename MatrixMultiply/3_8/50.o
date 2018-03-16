@@ -1,0 +1,7 @@
+
+
+Active Threads=8, N=50
+
+Elapsed Time (SERIAL) is 0.342410
+Elapsed Time (PARALLEL) is 0.054055
+SPEEDUP (Serial vs Parallel) is 6.334456
