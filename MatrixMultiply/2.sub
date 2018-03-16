@@ -1,0 +1,23 @@
+#!/bin/sh -l
+
+cd $PBS_O_WORKDIR
+
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 2  ./2 10   > 2_2/10.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 2  ./2 25   > 2_2/25.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 2  ./2 50   > 2_2/50.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 2  ./2 100  > 2_2/100.o
+
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 4  ./2 10   > 2_4/10.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 4  ./2 25   > 2_4/25.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 4  ./2 50   > 2_4/50.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 4  ./2 100  > 2_4/100.o
+
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 8  ./2 10   > 2_8/10.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 8  ./2 25   > 2_8/25.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 8  ./2 50   > 2_8/50.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 8  ./2 100  > 2_8/100.o
+
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 16 ./2 10   > 2_16/10.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 16 ./2 25   > 2_16/25.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 16 ./2 50   > 2_16/50.o
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiexec -n 16 ./2 100  > 2_16/100.o
