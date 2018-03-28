@@ -30,6 +30,8 @@ Qreader rQ2[20]; // Exchange Queue Mapper-Reader.
 
 int x[20]; // Total Chars Read for Reader.
 int y[20]; // Total Chars Read for Mapper.
+int uw1;
+int uw2;
 int rsize[20]; // Chars Read per file for Reader.
 
 int msrc[20]; // SRC queue number for Mapper.
@@ -55,7 +57,7 @@ typedef struct record
 } record;
 
 // List of records.
-typedef list<record> Lrecords;
+typedef vector<record> Lrecords;
 
 // A structure of 128 record list.
 typedef struct wfreq
@@ -66,8 +68,9 @@ typedef struct wfreq
 // Record List Array for each mapper.
 wfreq W[20];
 
+// Record List Array for each reducer.
 Lrecords Crecords[20];
-
+Lrecords Urecords[20];
 
 
 
@@ -173,7 +176,7 @@ void CreateWordFrequency(int mt)
 	char* split;
 	unsigned int key;
 	record t1;
-	int found;
+	//int found;
 	Lrecords::iterator it1;
 	Lrecords::iterator it2;
 	int i;
@@ -193,24 +196,25 @@ void CreateWordFrequency(int mt)
 		it1 = W[mt].wmap[key].begin();
 		it2 = W[mt].wmap[key].end();
 
-		found = 0;
+		//found = 0;
 		while(it1 != it2)
 		{
 			// GNU C compiler does not support strcmpi or stricmp functions.
 			if(0 == strcasecmp((*it1).words, split))
 			{
-				found = 1;
+				//found = 1;
 				(*it1).wc += 1;
+				break;
 			}
 			++it1;
 		}
-		if(!found)
+		if(it1 == it2)
 		{
 		   //printf("%s\n", split);
 			t1.words = (char*) malloc((strlen(split) + 1) * sizeof(char));
 			strcpy(t1.words, split);
 			//t1.words = split;
-			t1.wc = 0;
+			t1.wc = 1;
 			W[mt].wmap[key].push_back(t1);
 			++nUniqueWords;
 		}
@@ -248,6 +252,55 @@ void MapRecordsToReducers(int mt, int ct)
 		}
 	}
 	omp_unset_lock(&l5);
+}
+
+
+void ReduceRecords(int ct)
+{
+	Lrecords::iterator it1;
+	Lrecords::iterator it2;
+	Lrecords::iterator it3;
+   int i;
+
+	i = 0;
+
+	it1 = Crecords[ct].begin();
+	it3 = Crecords[ct].end();
+	
+	while(it1 != it3)
+	{
+		if((*it1).wc > 0)
+		{
+			it2 = it1+1;//Crecords[ct].begin();
+		   while(it2 != it3)
+		   {
+		   	if(strcasecmp((*it1).words, (*it2).words) == 0)
+		   	{
+		   		(*it1).wc += (*it2).wc;
+		   		(*it2).wc = 0;
+		   	}
+		   	++it2;
+		   }
+		   ++i;
+		}
+		++it1;
+	}
+	//printf("%02d, %d\n", omp_get_thread_num(), i);
+
+	i = 0;
+	it1 = Crecords[ct].begin();
+	it3 = Crecords[ct].end();
+
+	while(it1 != it3)
+	{
+		if((*it1).wc > 0)
+		{
+			Urecords[ct].push_back((*it1));
+		   ++i;
+		}
+		++it1;
+	}
+	//printf("%02d, %d\n", omp_get_thread_num(), i);
 }
 
 
@@ -302,7 +355,7 @@ int main(int argc, char* argv[])
 
 
 
-	omp_set_num_threads(13);
+	omp_set_num_threads(16);
    #pragma omp parallel
 	{
 		#pragma omp master
@@ -310,11 +363,13 @@ int main(int argc, char* argv[])
 			r1 = 0;
 			m1 = 0;
 			c1 = 0;
+			uw1 = 0;
+			uw2 = 0;
 			rdone = 0;
 			mdone = 0;
 			nReaders = 4;
 			nMappers = 4;
-			nReducers = 4;
+			nReducers = 3;
 
 			for(i = 0; i < nReaders; i++)
 			{
@@ -459,7 +514,7 @@ int main(int argc, char* argv[])
 
 			for(k = 0; k < nReducers; k++)
 			{
-            #pragma omp task
+            #pragma omp task // Reducer Threads.
 				{
 					int ct, cid;
 					cid = omp_get_thread_num();
@@ -471,15 +526,38 @@ int main(int argc, char* argv[])
 
 					while(mdone < nMappers)
 					{
+						omp_set_lock(&l4);
+						if(mdone == nMappers)
+						{
+							omp_unset_lock(&l4);
+							break;
+						}
+						omp_unset_lock(&l4);
 						usleep(500);
 					}
-					printf("Reduce %02d : %d, Total Words (%d)\n", cid, ct, Crecords[ct].size());
-					DestroyReducerRecords(ct);
+					//omp_set_lock(&l5);
+					//uw1 += Crecords[ct].size();
+					//omp_unset_lock(&l5);
+					
+					ReduceRecords(ct);
+					
+					//omp_set_lock(&l5);
+					//uw2 += Urecords[ct].size();
+					//omp_unset_lock(&l5);
+
+					printf("Reduce %02d : Total Words (%d -> %d)\n", cid, Crecords[ct].size(), Urecords[ct].size());
+					//DestroyReducerRecords(ct);
 				}
 			}
 		}
 	}
 
+	for(i = 0; i < nReducers; i++)
+	{
+		uw1 += Crecords[i].size();
+		uw2 += Urecords[i].size();
+	}
+	printf("Final : Total Words (%d -> %d)\n", uw1, uw2);
 	for(i = 0; i < 20; i++) free(files[i]);
 
 	omp_destroy_lock(&l0);
