@@ -106,7 +106,7 @@ int H(char* x)
 	g = 5381;
 	for(i = 0; x[i] != '\0'; i++)
 	{
-		g = ( (33*g) + x[i] );
+		g = ( (33*g) + tolower(x[i]) );
 	}
 	g = g%128;
 	h = (unsigned int)g;
@@ -191,6 +191,7 @@ void CreateWordFrequency(int mt)
 	split = strtok_r(sentence, " ", &word);
 	while(split != NULL)
 	{
+		// key should also ignore case.
 		key = H(split);
 		
 		it1 = W[mt].wmap[key].begin();
@@ -234,9 +235,7 @@ void MapRecordsToReducers(int mt, int ct)
 	Lrecords::iterator it2;
 	record t1;
 	int i;
-	int key;
 
-	omp_set_lock(&l5);
 	for(i = ct; i < 128; i = i+nReducers)
 	{
 		it1 = W[mt].wmap[i].begin();
@@ -251,7 +250,6 @@ void MapRecordsToReducers(int mt, int ct)
 		   ++it1;
 		}
 	}
-	omp_unset_lock(&l5);
 }
 
 
@@ -271,14 +269,17 @@ void ReduceRecords(int ct)
 	{
 		if((*it1).wc > 0)
 		{
-			it2 = it1+1;//Crecords[ct].begin();
+			it2 = it1+1;
 		   while(it2 != it3)
 		   {
-		   	if(strcasecmp((*it1).words, (*it2).words) == 0)
-		   	{
-		   		(*it1).wc += (*it2).wc;
-		   		(*it2).wc = 0;
-		   	}
+				if((*it2).wc > 0)
+				{
+			      if(strcasecmp((*it1).words, (*it2).words) == 0)
+		   	   {
+		   	   	(*it1).wc += (*it2).wc;
+		   	   	(*it2).wc = 0;
+		   	   }
+				}
 		   	++it2;
 		   }
 		   ++i;
@@ -369,7 +370,7 @@ int main(int argc, char* argv[])
 			mdone = 0;
 			nReaders = 4;
 			nMappers = 4;
-			nReducers = 3;
+			nReducers = 7;
 
 			for(i = 0; i < nReaders; i++)
 			{
@@ -492,10 +493,14 @@ int main(int argc, char* argv[])
 							}
 							
 							q[mt] = 0;
-							for(q[mt] = 0; q[mt] < nReducers; q[mt] += 1) MapRecordsToReducers(mt, q[mt]);
+							for(q[mt] = 0; q[mt] < nReducers; q[mt] += 1)
+							{
+								omp_set_lock(&l5);
+								MapRecordsToReducers(mt, q[mt]);
+								omp_unset_lock(&l5);
+							}
 
 							omp_set_lock(&l4);
-							//for(q[mt] = 0; q[mt] < nReducers; q[mt]++)
 							mQids.push(mt);
 							omp_unset_lock(&l4);
 
@@ -539,7 +544,9 @@ int main(int argc, char* argv[])
 					//uw1 += Crecords[ct].size();
 					//omp_unset_lock(&l5);
 					
+					//omp_set_lock(&l5);
 					ReduceRecords(ct);
+					//omp_unset_lock(&l5);
 					
 					//omp_set_lock(&l5);
 					//uw2 += Urecords[ct].size();
@@ -556,6 +563,7 @@ int main(int argc, char* argv[])
 	{
 		uw1 += Crecords[i].size();
 		uw2 += Urecords[i].size();
+		DestroyReducerRecords(i);
 	}
 	printf("Final : Total Words (%d -> %d)\n", uw1, uw2);
 	for(i = 0; i < 20; i++) free(files[i]);
