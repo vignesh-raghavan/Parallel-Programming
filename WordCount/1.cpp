@@ -17,8 +17,9 @@ int nMappers;
 int nReducers;
 int nWriters;
 
+// Deprecated in C++.
+//char* fnos[20] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"};
 
-char* fnos[20] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"};
 char* fname[20]; // Dynamic File names for Reader.
 char* lines[20]; // Single Line in a file.
 
@@ -331,6 +332,7 @@ int main(int argc, char* argv[])
 	int mdone;
 	int q[20];
 	
+	char fid[2];
 	char* test;
 	char* files[20];
 
@@ -338,7 +340,8 @@ int main(int argc, char* argv[])
 	{
 	   files[i] = (char*) malloc(20*sizeof(char));
 		strcpy(files[i], "CleanText/");
-		strcat(files[i], fnos[i]);
+		sprintf(fid, "%d", (i+1));
+		strcat(files[i], fid);
 		strcat(files[i], ".txt");
 		//printf("%s\n", files[i]);
 		fQids.push(i);
@@ -371,6 +374,7 @@ int main(int argc, char* argv[])
 			nReaders = 4;
 			nMappers = 4;
 			nReducers = 7;
+			printf("Master %02d : nReaders (%02d); nMappers (%02d); nReducers (%02d)\n", omp_get_thread_num(), nReaders, nMappers, nReducers);
 
 			for(i = 0; i < nReaders; i++)
 			{
@@ -544,9 +548,7 @@ int main(int argc, char* argv[])
 					//uw1 += Crecords[ct].size();
 					//omp_unset_lock(&l5);
 					
-					//omp_set_lock(&l5);
 					ReduceRecords(ct);
-					//omp_unset_lock(&l5);
 					
 					//omp_set_lock(&l5);
 					//uw2 += Urecords[ct].size();
