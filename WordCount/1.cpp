@@ -27,10 +27,12 @@ Qreader rQ1;
 
 int x[20]; // Total Chars Read for Reader.
 int y[20]; // Total Chars Read for Mapper.
+int z[20]; // Total Words Written by Writer.
 int tc1;
 int tc2;
 int uw1;
 int uw2;
+int uw3;
 int rsize[20]; // Chars Read per file for Reader.
 
 int msrc[20]; // SRC queue number for Mapper.
@@ -44,7 +46,6 @@ omp_lock_t l3;
 omp_lock_t l4;
 omp_lock_t l5;
 omp_lock_t l6;
-omp_lock_t l7;
 
 typedef queue<int, list<int> > Qid;
 Qid fQids; // File Queue numbers for Reader.
@@ -103,7 +104,7 @@ char* popRQ(Qreader *rQ)
 
 int isRQfull(Qreader *rQ)
 {
-	if((*rQ).size() >= (nReaders)) return 1;
+	if((*rQ).size() >= (2*nReaders)) return 1;
 	else return 0;
 }
 
@@ -157,29 +158,47 @@ char* readFile(string fname, int& cc)
 	return fdata;
 }
 
-void writeFile(string fname, int ct)
+int writeFile(string fname, int ct)
 {
 	Lrecords::iterator it1;
 	Lrecords::iterator it2;
-	
+	int i;
+	char* test;
+
 	ofstream fout;
 	fout.open(fname.c_str(), ios::app);
 
 	if(!fout)
 	{
 		printf("Stale Output File Handle!\n");
-		return;
+		return 0;
 	}
 
+	test = (char*) malloc(10*sizeof(char));
+	strcpy(test, "ThE");
+	
+	i = 0;
 	it1 = Crecords[ct].begin();
 	it2 = Crecords[ct].end();
 	while(it1 != it2)
 	{
+		if(strcasecmp((*it1).words, test) == 0)
+		{
+			printf("CHECK %s : wc(THE) = %d\n", fname.c_str(), (*it1).wc);
+		}
 		fout << "< " << (*it1).words << ", " << (*it1).wc << " >" << endl;
 		++it1;
+		++i;
 	}
 
 	fout.close();
+	free(test);
+
+	omp_set_lock(&l6);
+	uw3 += i;
+	omp_unset_lock(&l6);
+
+	return i;
 }
 
 
@@ -441,7 +460,6 @@ int main(int argc, char* argv[])
 	omp_init_lock(&l4);
 	omp_init_lock(&l5);
 	omp_init_lock(&l6);
-	omp_init_lock(&l7);
 
 
 
@@ -456,6 +474,7 @@ int main(int argc, char* argv[])
 			w1 = 0;
 			uw1 = 0;
 			uw2 = 0;
+			uw3 = 0;
 			rdone = 0;
 			cdone = 0;
 			nReaders = 2;
@@ -649,6 +668,7 @@ int main(int argc, char* argv[])
 					++w1;
 					omp_unset_lock(&l6);
 
+					z[wt] = 0;
 					while(cdone < nReducers)
 					{
 						omp_set_lock(&l5);
@@ -663,18 +683,19 @@ int main(int argc, char* argv[])
 
 						if(wsrc[wt] > -1)
 						{
-							writeFile(ofiles[wt], wsrc[wt]);
+							z[wt] += writeFile(ofiles[wt], wsrc[wt]);
 						}
 						else usleep(500);
 					}
 					
-					printf("Writer %02d : %02d\n", wid, wt);
+					printf("Writer %02d : Words Written (%d)\n", wid, z[wt]);
 				}
 			}
 		}
 	}
 
-	printf("Total Characters : (Reader) %d = (Mapper) %d\n", tc1, tc2);
+
+	// Clean-up and Check.
 	for(i = 0; i < nMappers; i++)
 	{
 		DestroyWordFrequency(i);
@@ -691,7 +712,10 @@ int main(int argc, char* argv[])
 	}
 	free(test);
 
-	printf("Total Words : (Mapper) %d -> (Reducer) %d\n", uw1, uw2);
+	printf("Total Chars : (Reader) %d = (Mapper) %d\n", tc1, tc2);
+	printf("Total Words : (Mapper)  %d -> (Reducer) %d\n", uw1, uw2);
+	printf("Total Words : (Reducer) %d  = (Writer)  %d\n", uw2, uw3);
+	
 	for(i = 0; i < 20; i++) free(ifiles[i]);
 	for(i = 0; i < 20; i++) free(ofiles[i]);
 
@@ -702,7 +726,6 @@ int main(int argc, char* argv[])
 	omp_destroy_lock(&l4);
 	omp_destroy_lock(&l5);
 	omp_destroy_lock(&l6);
-	omp_destroy_lock(&l7);
 
 	return 0;
 }
