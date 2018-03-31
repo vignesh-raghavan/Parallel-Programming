@@ -17,25 +17,24 @@ int nMappers;
 int nReducers;
 int nWriters;
 
-// Deprecated in C++.
-//char* fnos[20] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"};
-
 char* fname[20]; // Dynamic File names for Reader.
 char* lines[20]; // Single Line in a file.
 
 char* mdata[20]; // Store a Long String in Mapper.
 
 typedef queue<char*, list<char*> > Qreader;
-Qreader rQ1[20]; // Queue for Reader.
-Qreader rQ2[20]; // Exchange Queue Mapper-Reader.
+Qreader rQ1;
 
 int x[20]; // Total Chars Read for Reader.
 int y[20]; // Total Chars Read for Mapper.
+int tc1;
+int tc2;
 int uw1;
 int uw2;
 int rsize[20]; // Chars Read per file for Reader.
 
 int msrc[20]; // SRC queue number for Mapper.
+int csrc[20]; // SRC queue number for Mapper.
 
 omp_lock_t l0;
 omp_lock_t l1;
@@ -43,11 +42,17 @@ omp_lock_t l2;
 omp_lock_t l3;
 omp_lock_t l4;
 omp_lock_t l5;
+omp_lock_t l6;
+omp_lock_t l7;
 
 typedef queue<int, list<int> > Qid;
 Qid fQids; // File Queue numbers for Reader.
 Qid rQids; // Reader Queue numbers for Mapper.
 Qid mQids; // Mapper Queue numbers for Reducer.
+Qid cQids; // Mapper Queue numbers for Reducer.
+
+Qid ENDr; // Reader END detection for Mapper.
+Qid ENDm[20]; // Mapper END detection for Reducer.
 
 
 // <word, word-count> as Record.
@@ -71,7 +76,7 @@ wfreq W[20];
 
 // Record List Array for each reducer.
 Lrecords Crecords[20];
-Lrecords Urecords[20];
+//Lrecords Urecords[20];
 
 
 
@@ -94,6 +99,13 @@ char* popRQ(Qreader *rQ)
 	(*rQ).pop();
 	//if((*rQ).empty()) printf("RQ Empty\n");
 	return str;
+}
+
+int isRQfull(Qreader *rQ)
+{
+	//if((*rQ).size() >= 1) return 1;
+	if((*rQ).size() >= (nReaders)) return 1;
+	else return 0;
 }
 
 
@@ -202,7 +214,7 @@ void CreateWordFrequency(int mt)
 		while(it1 != it2)
 		{
 			// GNU C compiler does not support strcmpi or stricmp functions.
-			if(0 == strcasecmp((*it1).words, split))
+			if(strcasecmp((*it1).words, split) == 0)
 			{
 				//found = 1;
 				(*it1).wc += 1;
@@ -224,18 +236,23 @@ void CreateWordFrequency(int mt)
 		split = strtok_r(NULL, " ", &word);
 	}
 
+	omp_set_lock(&l3);
+	uw1 += nUniqueWords;
+	omp_unset_lock(&l3);
+
 	free(sentence);
-	free(mdata[mt]);
 	printf("Map %02d : Unique Words (%d)\n", omp_get_thread_num(), nUniqueWords);
 }
 
 
-void MapRecordsToReducers(int mt, int ct)
+void MapRecordsAndReduce(int mt, int ct)
 {
 	Lrecords::iterator it1;
 	Lrecords::iterator it2;
 	record t1;
 	int i;
+	Lrecords::iterator it3;
+	Lrecords::iterator it4;
 
 	for(i = ct; i < 128; i = i+nReducers)
 	{
@@ -244,16 +261,31 @@ void MapRecordsToReducers(int mt, int ct)
 
 		while(it1 != it2)
 		{
-		   t1.words = (char*) malloc((strlen((*it1).words)+1) * sizeof(char));
-		   strcpy(t1.words, (*it1).words);
-		   t1.wc = (*it1).wc;
-		   Crecords[ct].push_back(t1);
+			it3 = Crecords[ct].begin();
+			it4 = Crecords[ct].end();
+
+			while(it3 != it4)
+			{
+				if(strcasecmp((*it1).words, (*it3).words) == 0)
+				{
+					(*it3).wc += (*it1).wc;
+					break;
+				}
+				++it3;
+			}
+			if(it3 == it4)
+			{
+		      t1.words = (char*) malloc((strlen((*it1).words)+1) * sizeof(char));
+		      strcpy(t1.words, (*it1).words);
+		      t1.wc = (*it1).wc;
+		      Crecords[ct].push_back(t1);
+			}
 		   ++it1;
 		}
 	}
 }
 
-
+/* Not USED Anymore...
 void ReduceRecords(int ct)
 {
 	Lrecords::iterator it1;
@@ -303,7 +335,7 @@ void ReduceRecords(int ct)
 		++it1;
 	}
 	//printf("%02d, %d\n", omp_get_thread_num(), i);
-}
+}*/
 
 
 void DestroyReducerRecords(int ct)
@@ -311,7 +343,7 @@ void DestroyReducerRecords(int ct)
 	Lrecords::iterator it1;
 	Lrecords::iterator it2;
 
-	omp_set_lock(&l5);
+	//omp_set_lock(&l5);
 	it1 = Crecords[ct].begin();
 	it2 = Crecords[ct].end();
 
@@ -322,19 +354,42 @@ void DestroyReducerRecords(int ct)
 		++it1;
 	}
 	Crecords[ct].clear();
-	omp_unset_lock(&l5);
+	//omp_unset_lock(&l5);
+}
+
+// Debug Helper Function for verifying the correctness of implementation.
+int FindRecord(char* test, int ct)
+{
+	Lrecords::iterator it1;
+	Lrecords::iterator it2;
+
+	it1 = Crecords[ct].begin();
+	it2 = Crecords[ct].end();
+
+	while(it1 != it2)
+	{
+		if(strcasecmp((*it1).words, test) == 0)
+		{
+			return (*it1).wc;
+		}
+		++it1;
+	}
+	return 0;
 }
 
 int main(int argc, char* argv[])
 {
-	int i, j, k, r1, m1, c1;
+	int i, j, k, l, r1, m1, c1, w1;
 	int rdone;
-	int mdone;
+	int mdone[20];
+	int cdone;
 	int q[20];
 	
 	char fid[2];
 	char* test;
+	int check;
 	char* files[20];
+	char* ofiles[20];
 
 	for(i = 0; i < 20; i++)
 	{
@@ -345,6 +400,11 @@ int main(int argc, char* argv[])
 		strcat(files[i], ".txt");
 		//printf("%s\n", files[i]);
 		fQids.push(i);
+		ofiles[i] = (char*) malloc(20*sizeof(char));
+		strcpy(ofiles[i], "Output/");
+		strcat(ofiles[i], fid);
+		strcat(ofiles[i], ".o");
+		//printf("%s\n", ofiles[i]);
 	   //test = files[i];
 	   //printf("Hash : %d\n", H(test));
 	}
@@ -356,6 +416,8 @@ int main(int argc, char* argv[])
 	omp_init_lock(&l3);
 	omp_init_lock(&l4);
 	omp_init_lock(&l5);
+	omp_init_lock(&l6);
+	omp_init_lock(&l7);
 
 
 
@@ -367,14 +429,20 @@ int main(int argc, char* argv[])
 			r1 = 0;
 			m1 = 0;
 			c1 = 0;
+			w1 = 0;
 			uw1 = 0;
 			uw2 = 0;
 			rdone = 0;
-			mdone = 0;
-			nReaders = 4;
+			cdone = 0;
+			nReaders = 2;
 			nMappers = 4;
-			nReducers = 7;
-			printf("Master %02d : nReaders (%02d); nMappers (%02d); nReducers (%02d)\n", omp_get_thread_num(), nReaders, nMappers, nReducers);
+			nReducers = 8;
+			nWriters = 1;
+			printf("Master %02d : ", omp_get_thread_num());
+			printf("nReaders (%02d); ", nReaders);
+         printf("nMappers (%02d); ", nMappers);
+			printf("nReducers (%02d); ", nReducers);
+			printf("nWriters (%02d)\n", nWriters);
 
 			for(i = 0; i < nReaders; i++)
 			{
@@ -403,40 +471,33 @@ int main(int argc, char* argv[])
 		            if(fname[rt])
 						{
 						   lines[rt] = readFile(fname[rt], rsize[rt]);
-		               //printf("Read %02d : %1d \n", rid, 1);
 		               //printf("Read %02d : %s  cc (%02d) = %d\n", rid, fname[rt], rt, rsize[rt]);
-							pushRQ(&rQ1[rt], lines[rt]);
-		               //printf("Read %02d : %1d \n", rid, 2);
-		               x[rt] += rsize[rt];
-		               //printf("Read %02d : %1d \n", rid, 3);
-							
-							omp_set_lock(&l1);
-							rQids.push(rt);
-							omp_unset_lock(&l1);
 
-		               //printf("Read %02d : %1d \n", rid, 4);
-						   while(!rQ1[rt].empty())
+							omp_set_lock(&l1);
+							while(isRQfull(&rQ1))
 							{
-								//rQ1[rt].pop();
-								omp_set_lock(&l2);
-								if(rQ1[rt].empty())
-								{
-		                     //printf("Read %02d : %1d \n", rid, 5);
-									omp_unset_lock(&l2);
-									break;
-								}
-								omp_unset_lock(&l2);
 								usleep(500);
 							}
+							if(!isRQfull(&rQ1))
+							{
+								pushRQ(&rQ1, lines[rt]);
+							}
+							omp_unset_lock(&l1);
 
-		               //printf("Read %02d : %1d \n", rid, 6);
+							omp_set_lock(&l2);
+							rQids.push(rt);
+							omp_unset_lock(&l2);
+
+		               x[rt] += rsize[rt];
+							
 							free(lines[rt]);
 		               lines[rt] = NULL;
 						}
 					}
 
 					omp_set_lock(&l3);
-					rdone++;
+					ENDr.push(rt);
+					tc1 += x[rt];
 					omp_unset_lock(&l3);
 					printf("Read %02d : Total Chars (%d)\n", rid, x[rt]);
 		      }
@@ -460,61 +521,48 @@ int main(int argc, char* argv[])
 					while(rdone < nReaders)
 					{
 						omp_set_lock(&l3);
-						if(rdone == nReaders)
+						if(!ENDr.empty())
 						{
-							while(!rQids.empty()) rQids.pop();
-							omp_unset_lock(&l3);
-							break;
+							++rdone;
+							ENDr.pop();
 						}
 						omp_unset_lock(&l3);
 
-		            //printf("Map %02d : %1d \n", mid, 1);
-						omp_set_lock(&l1);
-						if(!rQids.empty())
+						while(!rQ1.empty())
 						{
-							msrc[mt] = rQids.front();
-							rQids.pop();
+						   omp_set_lock(&l4);
+						   if(!rQ1.empty())
+						   {
+						   	mdata[mt] = popRQ(&rQ1);
+					         tc2 += strlen(mdata[mt]);
+						   }
+						   omp_unset_lock(&l4);
+
+						   if(mdata[mt] != NULL)
+						   {
+								// For Debug.
+						   	omp_set_lock(&l2);
+						   	msrc[mt] = rQids.front();
+						   	rQids.pop();
+						   	omp_unset_lock(&l2);
+
+						   	y[mt] += strlen(mdata[mt]);
+
+						   	CreateWordFrequency(mt);
+
+						      //printf("Map %02d : FROM (%02d) cc %d $$\n", mid, msrc[mt], strlen(mdata[mt]));
+                     	free(mdata[mt]);
+                     	mdata[mt] = NULL;
+						   }
 						}
-						else msrc[mt] = -1;
-						omp_unset_lock(&l1);
-						
-		            //printf("Map %02d : %1d \n", mid, 2);
-						if(msrc[mt] > -1)
-						{
-							omp_set_lock(&l2);
-							swap(rQ1[msrc[mt]], rQ2[mt]);
-							omp_unset_lock(&l2);
-
-		               //printf("Map %02d : %1d \n", mid, 3);
-							y[mt] += strlen(rQ2[mt].front());
-							while(!rQ2[mt].empty())
-							{
-								//free(rQ2[mt].front());
-								//rQ2[mt].pop();
-								mdata[mt] = popRQ(&rQ2[mt]);
-
-								CreateWordFrequency(mt);
-							}
-							
-							q[mt] = 0;
-							for(q[mt] = 0; q[mt] < nReducers; q[mt] += 1)
-							{
-								omp_set_lock(&l5);
-								MapRecordsToReducers(mt, q[mt]);
-								omp_unset_lock(&l5);
-							}
-
-							omp_set_lock(&l4);
-							mQids.push(mt);
-							omp_unset_lock(&l4);
-
-	                  DestroyWordFrequency(mt);
-						   //printf("Map %02d : FROM (%02d) cc %d $$\n", mid, msrc[mt], y[mt]);
-						}
-						else usleep(500);
+						usleep(500);
 					}
+					
 					omp_set_lock(&l4);
-					++mdone;
+					for(q[mt] = 0; q[mt] < nReducers; q[mt] += 1)
+					{
+						ENDm[q[mt]].push(mt);
+					}
 					omp_unset_lock(&l4);
 					printf("Map %02d :  Total Chars (%d)\n", mid, y[mt]);
 				}
@@ -533,42 +581,106 @@ int main(int argc, char* argv[])
 					++c1;
 					omp_unset_lock(&l4);
 
-					while(mdone < nMappers)
+					mdone[ct] = 0;
+					while(mdone[ct] < nMappers)
 					{
 						omp_set_lock(&l4);
-						if(mdone == nMappers)
+						if(!ENDm[ct].empty())
 						{
-							omp_unset_lock(&l4);
-							break;
+							++mdone[ct];
+							csrc[ct] = ENDm[ct].front();
+							ENDm[ct].pop();
 						}
+						else csrc[ct] = -1;
 						omp_unset_lock(&l4);
-						usleep(500);
-					}
-					//omp_set_lock(&l5);
-					//uw1 += Crecords[ct].size();
-					//omp_unset_lock(&l5);
-					
-					ReduceRecords(ct);
-					
-					//omp_set_lock(&l5);
-					//uw2 += Urecords[ct].size();
-					//omp_unset_lock(&l5);
 
-					printf("Reduce %02d : Total Words (%d -> %d)\n", cid, Crecords[ct].size(), Urecords[ct].size());
-					//DestroyReducerRecords(ct);
+						if(csrc[ct] > -1)
+						{
+							//printf("C %02d : From %d\n", cid, csrc[ct]);
+							MapRecordsAndReduce(csrc[ct], ct);
+						}
+						else usleep(500);
+					}
+					
+					//ReduceRecords(ct);
+
+					omp_set_lock(&l5);
+					cQids.push(ct);
+					omp_unset_lock(&l5);
+				
+					printf("Reduce %02d : Reduced Words (%d)\n", cid, Crecords[ct].size());
 				}
 			}
+
+			
+			/*for(l = 0; l < nWriters; l++)
+			{
+            #pragma omp task // Writer Threads.
+				{
+					int wid, wt;
+					wid = omp_get_thread_num();
+
+					omp_set_lock(&l6);
+					wt = w1;
+					++w1;
+					omp_unset_lock(&l6);
+
+					while(cdone < nReducers)
+					{
+						omp_set_lock(&l6);
+						if(cdone == nReducers)
+						{
+							while(!cQids.empty()) cQids.pop();
+							omp_unset_lock(&l6);
+							break;
+						}
+						omp_unset_lock(&l6);
+
+						omp_set_lock(&l6);
+						if(!cQids.empty())
+						{
+							wsrc[wt] = cQids.front();
+							cQids.pop();
+						}
+						else wsrc[wt] = -1;
+						omp_unset_lock(&l6);
+
+						if(wsrc[wt] > -1)
+						{
+							while(!Urecords[wsrc[wt]].empty())
+							{
+								Urecords[wsrc[wt]].clear();
+							}
+						}
+						else usleep(500);
+					}
+					
+					printf("Writer %02d : %02d\n", wid, wt);
+				}
+			}*/
 		}
 	}
 
+	printf("Total Characters : (Reader) %d = (Mapper) %d\n", tc1, tc2);
+	for(i = 0; i < nMappers; i++)
+	{
+		DestroyWordFrequency(i);
+	}
+
+	test = (char*) malloc(10*sizeof(char));
+	strcpy(test, "ThE");
 	for(i = 0; i < nReducers; i++)
 	{
-		uw1 += Crecords[i].size();
-		uw2 += Urecords[i].size();
+		uw2 += Crecords[i].size();
+		check = FindRecord(test, i);
+		printf("CHECK %02d : wc(THE) = %d\n", i, check);
 		DestroyReducerRecords(i);
 	}
-	printf("Final : Total Words (%d -> %d)\n", uw1, uw2);
+	free(test);
+
+	printf("Total Words : (Mapper) %d -> (Reducer) %d\n", uw1, uw2);
 	for(i = 0; i < 20; i++) free(files[i]);
+	for(i = 0; i < 20; i++) free(ofiles[i]);
 
 	omp_destroy_lock(&l0);
 	omp_destroy_lock(&l1);
@@ -576,6 +688,34 @@ int main(int argc, char* argv[])
 	omp_destroy_lock(&l3);
 	omp_destroy_lock(&l4);
 	omp_destroy_lock(&l5);
+	omp_destroy_lock(&l6);
+	omp_destroy_lock(&l7);
 
 	return 0;
 }
+
+
+
+
+//void MapRecordsToReducers(int mt, int ct)
+//{
+//	Lrecords::iterator it1;
+//	Lrecords::iterator it2;
+//	record t1;
+//	int i;
+//
+//	for(i = ct; i < 128; i = i+nReducers)
+//	{
+//		it1 = W[mt].wmap[i].begin();
+//		it2 = W[mt].wmap[i].end();
+//
+//		while(it1 != it2)
+//		{
+//		   t1.words = (char*) malloc((strlen((*it1).words)+1) * sizeof(char));
+//		   strcpy(t1.words, (*it1).words);
+//		   t1.wc = (*it1).wc;
+//		   Crecords[ct].push_back(t1);
+//		   ++it1;
+//		}
+//	}
+//}
