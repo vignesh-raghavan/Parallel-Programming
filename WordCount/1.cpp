@@ -433,6 +433,25 @@ int main(int argc, char* argv[])
 	int check;
 	char* ifiles[20];
 	char* ofiles[20];
+	double time1;
+
+	ofstream fout;
+
+	if(argc == 5)
+	{
+		nReaders = atoi(argv[1]);
+		nMappers = atoi(argv[2]);
+		nReducers = atoi(argv[3]);
+		nWriters = atoi(argv[4]);
+	}
+	else
+	{
+		nReaders = 1;
+		nMappers = 1;
+		nReducers = 1;
+		nWriters = 1;
+	}
+
 
 	for(i = 0; i < 20; i++)
 	{
@@ -447,9 +466,16 @@ int main(int argc, char* argv[])
 		strcpy(ofiles[i], "Output/");
 		strcat(ofiles[i], fid);
 		strcat(ofiles[i], ".o");
+
 		//printf("%s\n", ofiles[i]);
 	   //test = ifiles[i];
 	   //printf("Hash : %d\n", H(test));
+	}
+
+	for(i = 0; i < nWriters; i++)
+	{
+		fout.open(ofiles[i], ios::out);
+		fout.close();
 	}
 
 	
@@ -477,15 +503,13 @@ int main(int argc, char* argv[])
 			uw3 = 0;
 			rdone = 0;
 			cdone = 0;
-			nReaders = 2;
-			nMappers = 4;
-			nReducers = 8;
-			nWriters = 2;
 			printf("Master %02d : ", omp_get_thread_num());
 			printf("nReaders (%02d); ", nReaders);
          printf("nMappers (%02d); ", nMappers);
 			printf("nReducers (%02d); ", nReducers);
 			printf("nWriters (%02d)\n", nWriters);
+
+			time1 = omp_get_wtime();
 
 			for(i = 0; i < nReaders; i++)
 			{
@@ -694,6 +718,7 @@ int main(int argc, char* argv[])
 		}
 	}
 
+	time1 = omp_get_wtime() - time1;
 
 	// Clean-up and Check.
 	for(i = 0; i < nMappers; i++)
@@ -715,6 +740,7 @@ int main(int argc, char* argv[])
 	printf("Total Chars : (Reader) %d = (Mapper) %d\n", tc1, tc2);
 	printf("Total Words : (Mapper)  %d -> (Reducer) %d\n", uw1, uw2);
 	printf("Total Words : (Reducer) %d  = (Writer)  %d\n", uw2, uw3);
+	printf("Total Elapsed Time is %fs\n", time1);
 	
 	for(i = 0; i < 20; i++) free(ifiles[i]);
 	for(i = 0; i < 20; i++) free(ofiles[i]);

@@ -1,0 +1,8 @@
+#!/bin/sh -l
+
+cd $PBS_O_WORKDIR
+
+./1
+
+echo -e "\n\n\n";
+./1 2 4 8 2

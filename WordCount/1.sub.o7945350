@@ -1,0 +1,85 @@
+Master 00 : nReaders (01); nMappers (01); nReducers (01); nWriters (01)
+Map 13 : Unique Words (8031)
+Map 13 : Unique Words (4045)
+Map 13 : Unique Words (1405)
+Map 13 : Unique Words (3345)
+Map 13 : Unique Words (1634)
+Map 13 : Unique Words (6845)
+Map 13 : Unique Words (196)
+Map 13 : Unique Words (1446)
+Map 13 : Unique Words (1079)
+Map 13 : Unique Words (1445)
+Map 13 : Unique Words (1969)
+Map 13 : Unique Words (432)
+Map 13 : Unique Words (1863)
+Map 13 : Unique Words (314)
+Map 13 : Unique Words (81)
+Map 13 : Unique Words (104)
+Map 13 : Unique Words (147)
+Read 18 : Total Chars (13421290)
+Map 13 : Unique Words (0)
+Map 13 : Unique Words (0)
+Map 13 : Unique Words (0)
+Map 13 :  Total Chars (13421290)
+Reduce 16 : Reduced Words (34381)
+CHECK Output/1.o : wc(THE) = 136107
+Writer 11 : Words Written (34381)
+CHECK 00 : wc(THE) = 136107
+Total Chars : (Reader) 13421290 = (Mapper) 13421290
+Total Words : (Mapper)  34381 -> (Reducer) 34381
+Total Words : (Reducer) 34381  = (Writer)  34381
+Total Elapsed Time is 10.827133s
+
+
+
+
+Master 00 : nReaders (02); nMappers (04); nReducers (08); nWriters (02)
+Map 05 : Unique Words (5185)
+Map 08 : Unique Words (8031)
+Map 07 : Unique Words (8332)
+Map 11 : Unique Words (9018)
+Map 08 : Unique Words (781)
+Map 07 : Unique Words (4429)
+Map 05 : Unique Words (6297)
+Map 07 : Unique Words (2652)
+Map 11 : Unique Words (4668)
+Map 07 : Unique Words (2493)
+Map 11 : Unique Words (2863)
+Read 04 : Total Chars (7607745)
+Map 11 : Unique Words (269)
+Map 07 : Unique Words (770)
+Read 14 : Total Chars (5813545)
+Map 07 : Unique Words (288)
+Map 11 : Unique Words (361)
+Map 11 : Unique Words (0)
+Map 05 : Unique Words (5754)
+Map 05 :  Total Chars (3450374)
+Map 07 : Unique Words (1457)
+Map 07 :  Total Chars (2960402)
+Map 11 : Unique Words (747)
+Map 11 :  Total Chars (3216157)
+Map 08 : Unique Words (11379)
+Map 08 :  Total Chars (3794357)
+Reduce 17 : Reduced Words (4243)
+Reduce 16 : Reduced Words (4247)
+Reduce 15 : Reduced Words (4306)
+Reduce 09 : Reduced Words (4272)
+Reduce 01 : Reduced Words (4269)
+CHECK Output/1.o : wc(THE) = 136107
+Reduce 03 : Reduced Words (4353)
+Reduce 18 : Reduced Words (4304)
+Reduce 02 : Reduced Words (4387)
+Writer 06 : Words Written (17122)
+Writer 12 : Words Written (17259)
+CHECK 00 : wc(THE) = 0
+CHECK 01 : wc(THE) = 0
+CHECK 02 : wc(THE) = 0
+CHECK 03 : wc(THE) = 0
+CHECK 04 : wc(THE) = 0
+CHECK 05 : wc(THE) = 0
+CHECK 06 : wc(THE) = 136107
+CHECK 07 : wc(THE) = 0
+Total Chars : (Reader) 13421290 = (Mapper) 13421290
+Total Words : (Mapper)  75774 -> (Reducer) 34381
+Total Words : (Reducer) 34381  = (Writer)  34381
+Total Elapsed Time is 0.606187s
