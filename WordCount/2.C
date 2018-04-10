@@ -710,9 +710,15 @@ int main(int argc, char* argv[])
 					   			else
 					   			{
 					   				allreaddone = 1;
-					   				ENDf[s1].push(sid);
 					   			}
 					   		}
+								if(allreaddone)
+								{
+								   for(s1 = 0; s1 < nReaders; s1++)
+								   {
+								   	ENDf[s1].push(sid);
+								   }
+								}
 					   	}
 					   }
 					   omp_unset_lock(&l0);
