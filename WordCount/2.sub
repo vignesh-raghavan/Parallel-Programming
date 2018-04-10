@@ -1,0 +1,13 @@
+#!/bin/sh -l
+
+cd $PBS_O_WORKDIR
+#export OMP_NUM_THREADS=6
+
+module load intel
+module load impi
+
+#/apps/rhel6/openmpi/1.8.1/gcc-5.2.0/bin/mpirun -np 2 ./2 
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpirun -n 2 ./2
+
+#echo -e "\n\n\n"
+#/apps/rhel6/openmpi/1.8.1/gcc-5.2.0/bin/mpiexec -n 2 ./2 2 4 8 2
