@@ -6,8 +6,6 @@ cd $PBS_O_WORKDIR
 module load intel
 module load impi
 
-#/apps/rhel6/openmpi/1.8.1/gcc-5.2.0/bin/mpirun -np 2 ./2 
-/apps/rhel6/intel/impi/5.1.2.150/bin64/mpirun -n 2 ./2
+#/apps/rhel6/intel/impi/5.1.2.150/bin64/mpiicpc -mt_mpi -openmp -o 2 2.C
 
-#echo -e "\n\n\n"
-#/apps/rhel6/openmpi/1.8.1/gcc-5.2.0/bin/mpiexec -n 2 ./2 2 4 8 2
+/apps/rhel6/intel/impi/5.1.2.150/bin64/mpirun -n 2 ./2
