@@ -28,19 +28,19 @@ char* mdata[20]; // Store a Long String in Mapper.
 typedef queue<char*, list<char*> > Qreader;
 Qreader rQ1;
 
-int x[20]; // Total Chars Read for Reader.
-int y[20]; // Total Chars Read for Mapper.
-int z[20]; // Total Words Written by Writer.
+int* x;
+int* y;
+int* z;
 int tc1;
 int tc2;
 int uw1;
 int uw2;
 int uw3;
-int rsize[20]; // Chars Read per file for Reader.
+int* rsize;
 
-int msrc[20]; // SRC queue number for Mapper.
-int csrc[20]; // SRC queue number for Mapper.
-int wsrc[20]; // SRC queue number for Mapper.
+int* msrc; // SRC queue number for Mapper.
+int* csrc; // SRC queue number for Mapper.
+int* wsrc; // SRC queue number for Mapper.
 
 omp_lock_t l0;
 omp_lock_t l1;
@@ -49,6 +49,7 @@ omp_lock_t l3;
 omp_lock_t l4;
 omp_lock_t l5;
 omp_lock_t l6;
+omp_lock_t l7;
 
 typedef queue<int, list<int> > Qid;
 Qid gQids; // File Queue numbers for Reader.
@@ -59,6 +60,7 @@ Qid ENDf[20];
 Qid ENDr; // Reader END detection for Mapper.
 Qid ENDm[20]; // Mapper END detection for Reducer.
 Qid ENDc; // Reducer END detection for Writer.
+Qid ENDmap;
 
 
 // <word, word-count> as Record.
@@ -66,6 +68,7 @@ typedef struct record
 {
 	char* words;
 	int wc;
+	//char words[27]; //Max is 26 character string.
 } record;
 
 // List of records.
@@ -84,7 +87,15 @@ wfreq W[20];
 Lrecords Crecords[20];
 //Lrecords Urecords[20];
 
+typedef struct wordarray
+{
+	int wc;
+	char word[27];
+} wordarray;
 
+typedef vector<wordarray> Lwords;
+
+Lwords Swords, Rwords;
 
 // Helper Functions.
 void pushRQ(Qreader *rQ, char* s)
@@ -425,13 +436,45 @@ int FindRecord(char* test, int ct)
 	return 0;
 }
 
+
+void MapRecordsToSend(int mt, int pid, int P)
+{
+	Lrecords::iterator it1;
+	Lrecords::iterator it2;
+	int i;
+	wordarray record1;
+
+	for(i = pid; i < 128; i += P)
+	{
+		it1 = W[mt].wmap[i].begin();
+		it2 = W[mt].wmap[i].end();
+
+		while(it1 != it2)
+		{
+			record1.wc = (*it1).wc;
+			strcpy(record1.word, (*it1).words);
+			Swords.push_back(record1);
+			++it1;
+		}
+	}
+
+	return;
+}
+
+
+void MapRecordsReceived(int ct)
+{
+	Lrecords::iterator it1;
+	Lrecords::iterator it2;
+}
+
 int main(int argc, char* argv[])
 {
 	int i, j, k, l, r1, m1, c1, w1;
 	int rdone;
-	int mdone[20];
+	int* mdone;
 	int cdone;
-	int q[20];
+	int q;
 	
 	char fid[2];
 	char* test;
@@ -442,14 +485,17 @@ int main(int argc, char* argv[])
 
 	ofstream fout;
 
-	int fileIDs[20];
+	int* fileIDs;
 	int s1;
-	int rcomplete[20];
+	int* rcomplete;
 	int allreaddone;
 	int requestreads;
 	int readrequest;
-	int ReadIDs[20];
+	int* ReadIDs;
 	int readalldone;
+
+	int sdone, nS, ssrc;
+	int nQ, receivecount;
 
 	int provided;
 
@@ -462,6 +508,18 @@ int main(int argc, char* argv[])
 	printf("<n%02d> Thread Support %d\n", node, provided);
 
 	MPI_Status requeststats;
+	MPI_Status receivestats;
+
+	int blocks[2] = {1, 27};
+	MPI_Datatype type[2] = {MPI_INT, MPI_CHAR};
+	MPI_Aint disp[2];
+	MPI_Aint intex;
+	MPI_Type_extent(MPI_INT, &intex);
+	disp[0] = static_cast<MPI_Aint>(0);
+	disp[1] = intex;
+	MPI_Datatype MPI_RECORDS_TYPE;
+	MPI_Type_struct(2, blocks, disp, type, &MPI_RECORDS_TYPE);
+	MPI_Type_commit(&MPI_RECORDS_TYPE);
 
 	if(argc == 5)
 	{
@@ -477,6 +535,18 @@ int main(int argc, char* argv[])
 		nReducers = 1;
 		nWriters = 1;
 	}
+
+	mdone = (int*) malloc(nReducers*sizeof(int));
+	fileIDs = (int*) malloc(nReaders*sizeof(int));
+	ReadIDs = (int*) malloc(nReaders*sizeof(int));
+	rcomplete = (int*) malloc(nReaders*sizeof(int));
+	x = (int*) malloc(nReaders*sizeof(int));
+	y = (int*) malloc(nMappers*sizeof(int));
+	z = (int*) malloc(nWriters*sizeof(int));
+	rsize = (int*) malloc(nReaders*sizeof(int));
+	msrc = (int*) malloc(nMappers*sizeof(int));
+	csrc = (int*) malloc(nReducers*sizeof(int));
+	wsrc = (int*) malloc(nWriters*sizeof(int));
 
 	j = 0;
 	for(i = 0; i < 20; i++)
@@ -525,6 +595,7 @@ int main(int argc, char* argv[])
 	omp_init_lock(&l4);
 	omp_init_lock(&l5);
 	omp_init_lock(&l6);
+	omp_init_lock(&l7);
 
 
 	MPI_Barrier(MPI_COMM_WORLD);
@@ -607,7 +678,6 @@ int main(int argc, char* argv[])
 							
 							free(lines[rt]);
 		               lines[rt] = NULL;
-
 						}
 						else
 						{
@@ -621,7 +691,6 @@ int main(int argc, char* argv[])
 					omp_unset_lock(&l3);
 					printf("<n%02d> Read %02d : Total Chars (%d)\n", node, rid, x[rt]);
 		      }
-
 			}
 
 
@@ -677,11 +746,15 @@ int main(int argc, char* argv[])
 						}
 						usleep(500);
 					}
+
+					omp_set_lock(&l7);
+					ENDmap.push(mt);
+					omp_unset_lock(&l7);
 					
 					omp_set_lock(&l4);
-					for(q[mt] = 0; q[mt] < nReducers; q[mt] += 1)
+					for(q = 0; q < nReducers; q += 1)
 					{
-						ENDm[q[mt]].push(mt);
+						ENDm[q].push(mt);
 					}
 					omp_unset_lock(&l4);
 					printf("<n%02d> Map %02d :  Total Chars (%d)\n", node, mid, y[mt]);
@@ -727,6 +800,55 @@ int main(int argc, char* argv[])
 					}
 
 					printf("<n%02d> Sender %02d : Completed Reads\n", node, sid);
+
+					while(sdone < nMappers)
+					{
+						omp_set_lock(&l7);
+						if(!ENDmap.empty())
+						{
+							ssrc = ENDmap.front();
+							ENDmap.pop();
+						}
+						else ssrc = -1;
+						omp_unset_lock(&l7);
+
+						if(ssrc > -1)
+						{
+							for(nS = 0; nS < P; nS++)
+							{
+								if(nS != node)
+								{
+									MapRecordsToSend(ssrc, nS, P);
+									MPI_Send(Swords.data(), Swords.size(), MPI_RECORDS_TYPE, nS, 2, MPI_COMM_WORLD);
+									Swords.clear();
+								}
+							}
+							++sdone;
+						}
+						else
+						{
+							usleep(500);
+						}
+					}
+					
+				}
+			}
+
+
+			{
+            #pragma omp task // Receiver Thread.
+				{
+					int qt;
+					qt = omp_get_thread_num();
+
+					for(nQ = 0; nQ < (nMappers*(P-1)); nQ++)
+					{
+						MPI_Probe(MPI_ANY_SOURCE, 2, MPI_COMM_WORLD, &receivestats);
+						MPI_Get_count(&receivestats, MPI_RECORDS_TYPE, &receivecount);
+						Rwords.resize(receivecount);
+						MPI_Recv(Rwords.data(), receivecount, MPI_RECORDS_TYPE, receivestats.MPI_SOURCE, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+						Rwords.clear();
+					}
 				}
 			}
 
@@ -845,11 +967,35 @@ int main(int argc, char* argv[])
 	//time1 = omp_get_wtime() - time1;
 	time1 = MPI_Wtime() - time1;
 
+	//MapRecordsToSend(0, 1, 2);
+	//printf("<n%02d> Send Size %d\n", node, Swords.size());
+	//Swords.erase(Swords.begin(), Swords.end());
+	//MapRecordsToSend(0, 1, 2);
+	//printf("<n%02d> Send Size %d\n", node, Swords.size());
+
 	// Clean-up and Check.
 	for(i = 0; i < nMappers; i++)
 	{
 		DestroyWordFrequency(i);
 	}
+
+	int max;
+	max = 0;
+	Lrecords::iterator it1;
+	Lrecords::iterator it2;
+	
+	for(i = 0; i < nReducers; i++)
+	{
+		it1 = Crecords[i].begin();
+		it2 = Crecords[i].end();
+
+		while(it1 != it2)
+		{
+			if(max < strlen((*it1).words)) max = strlen((*it1).words);
+			++it1;
+		}
+	}
+	printf("<n%02d> MAXIMUM STRING SIZE %d\n", node, max);
 
 	test = (char*) malloc(10*sizeof(char));
 	strcpy(test, "ThE");
@@ -877,6 +1023,7 @@ int main(int argc, char* argv[])
 	omp_destroy_lock(&l4);
 	omp_destroy_lock(&l5);
 	omp_destroy_lock(&l6);
+	omp_destroy_lock(&l7);
 
 }
 else
@@ -884,6 +1031,49 @@ else
 	printf("<n%02d> : Hello!\n", node);
 	usleep(500);
 }
+
+   free(mdone);
+	free(fileIDs);
+	free(ReadIDs);
+	free(rcomplete);
+	free(x);
+	free(y);
+	free(z);
+	free(rsize);
+	free(msrc);
+	free(csrc);
+	free(wsrc);
+
+
+// Debug Code for Sending Constant Character Messages.
+   if(node == 0)
+   {
+      char* word1;
+	   char* word2;
+
+	   word1 = (char*) malloc(27*sizeof(char));
+	   word2 = (char*) malloc(27*sizeof(char));
+	   strcpy(word1, "THE");
+	   printf("%d ..\n", strlen(word1));
+	   strcpy(word2, "thE");
+	   printf("%d ..\n", strlen(word2));
+	   if(strcasecmp(word1, word2) == 0) printf("MATCH\n");
+	   else printf("MISMATCH\n");
+	   MPI_Send(word2, 27, MPI_CHAR, 1, 1, MPI_COMM_WORLD);
+		free(word1);
+		free(word2);
+   }
+   else
+   {
+	   int count;
+	   char* word1;
+	   MPI_Probe(0, 1, MPI_COMM_WORLD, &requeststats);
+	   MPI_Get_count(&requeststats, MPI_CHAR, &count);
+	   word1 = (char*) malloc(count*sizeof(char));
+	   MPI_Recv(word1, count, MPI_CHAR, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	   printf("Recvd %d, %d .. %s\n", count, strlen(word1), word1);
+	   free(word1);
+   }
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	MPI_Finalize();
