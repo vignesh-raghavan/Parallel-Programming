@@ -20,8 +20,6 @@ int nMappers;
 int nReducers;
 int nWriters;
 
-char* fname[20]; // Dynamic File names for Reader.
-char* lines[20]; // Single Line in a file.
 
 char* mdata[20]; // Store a Long String in Mapper.
 
@@ -50,18 +48,6 @@ omp_lock_t l4;
 omp_lock_t l5;
 omp_lock_t l6;
 omp_lock_t l7;
-
-typedef queue<int, list<int> > Qid;
-Qid gQids; // File Queue numbers for Reader.
-Qid fQids; // File Queue numbers for Reader.
-Qid rQids; // Reader Queue numbers for Mapper.
-
-Qid ENDf[20];
-Qid ENDr; // Reader END detection for Mapper.
-Qid ENDm[20]; // Mapper END detection for Reducer.
-Qid ENDc; // Reducer END detection for Writer.
-Qid ENDmap;
-
 
 // <word, word-count> as Record.
 typedef struct record
@@ -96,6 +82,9 @@ typedef struct wordarray
 typedef vector<wordarray> Lwords;
 
 Lwords Swords[10][40], Rwords[20];
+
+
+
 
 // Helper Functions.
 void pushRQ(Qreader *rQ, char* s)
@@ -386,7 +375,6 @@ void DestroyReducerRecords(int ct)
 	Lrecords::iterator it1;
 	Lrecords::iterator it2;
 
-	//omp_set_lock(&l5);
 	it1 = Crecords[ct].begin();
 	it2 = Crecords[ct].end();
 
@@ -397,7 +385,6 @@ void DestroyReducerRecords(int ct)
 		++it1;
 	}
 	Crecords[ct].clear();
-	//omp_unset_lock(&l5);
 }
 
 // Debug Helper Function for verifying the correctness of implementation.
@@ -458,8 +445,6 @@ int main(int argc, char* argv[])
 	char fid[2];
 	char* test;
 	int check;
-	char* ifiles[20];
-	char* ofiles[20];
 	double time1;
 
 	ofstream fout;
@@ -474,22 +459,18 @@ int main(int argc, char* argv[])
 	int readalldone;
 
 	int sdone, nSi, nSj, ssrc;
-	int nMi[20], nMj[20];
-	int nC[20], receivecount[20];
+	int *nMi, *nMj;
+	int *nC, *receivecount;
 
 	int provided;
 
 	MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
-	//MPI_Init(&argc, &argv);
 	MPI_Comm_rank(MPI_COMM_WORLD, &node);
 	MPI_Comm_size(MPI_COMM_WORLD, &P);
 
 	printf("<n%02d> Thread Support %d\n", node, MPI_THREAD_MULTIPLE);
 	printf("<n%02d> Thread Support %d\n", node, provided);
 
-	MPI_Request sendreqs[20];
-	MPI_Status requeststats;
-	MPI_Status receivestats[20];
 
 	int blocks[2] = {1, 27};
 	MPI_Datatype type[2] = {MPI_INT, MPI_CHAR};
@@ -517,6 +498,21 @@ int main(int argc, char* argv[])
 		nWriters = 1;
 	}
 
+   typedef queue<int, list<int> > Qid;
+   Qid gQids; // File Queue numbers for Reader.
+   Qid fQids; // File Queue numbers for Reader.
+   Qid rQids; // Reader Queue numbers for Mapper.
+   
+   Qid ENDf[nReaders];
+   Qid ENDr; // Reader END detection for Mapper.
+   Qid ENDm[nReducers]; // Mapper END detection for Reducer.
+   Qid ENDc; // Reducer END detection for Writer.
+   Qid ENDmap;
+	
+	MPI_Request sendreqs[(P*nReducers)];
+	MPI_Status requeststats;
+	MPI_Status receivestats[nReducers];
+
 	mdone = (int*) malloc(nReducers*sizeof(int));
 	fileIDs = (int*) malloc(nReaders*sizeof(int));
 	ReadIDs = (int*) malloc(nReaders*sizeof(int));
@@ -528,7 +524,16 @@ int main(int argc, char* argv[])
 	msrc = (int*) malloc(nMappers*sizeof(int));
 	csrc = (int*) malloc(nReducers*sizeof(int));
 	wsrc = (int*) malloc(nWriters*sizeof(int));
+	nMi = (int*) malloc(nMappers*sizeof(int));
+	nMj = (int*) malloc(nMappers*sizeof(int));
+	nC = (int*) malloc(nReducers*sizeof(int));
+	receivecount = (int*) malloc(nReducers*sizeof(int));
 
+	char* ifiles[20];
+	char* ofiles[nWriters];
+   char* fname[nReaders]; // Dynamic File names for Reader.
+   char* lines[nReaders]; // Single Line in a file.
+	
 	j = 0;
 	for(i = 0; i < 20; i++)
 	{
@@ -548,10 +553,10 @@ int main(int argc, char* argv[])
 	j = 0;
 	for(i = 0; i < 20; i++)
 	{
-		ofiles[i] = (char*) malloc(20*sizeof(char));
 		if(i%P != node) continue;
-	
+
 		{
+		   ofiles[j] = (char*) malloc(20*sizeof(char));
 		   strcpy(ofiles[j], "Output/");
 		   sprintf(fid, "%d", (i+1));
 		   strcat(ofiles[j], fid);
@@ -806,7 +811,7 @@ int main(int argc, char* argv[])
 						if(ssrc > -1)
 						{
 							nSj = 0;
-							for(nSi = 0; nSi < (nReducers*P); nSi++)
+							for(nSi = 0; nSi < (P*nReducers); nSi++)
 							{
 								if((nSi/nReducers) != node)
 								{
@@ -954,12 +959,6 @@ int main(int argc, char* argv[])
 	//time1 = omp_get_wtime() - time1;
 	time1 = MPI_Wtime() - time1;
 
-	//MapRecordsToSend(0, 1, 2);
-	//printf("<n%02d> Send Size %d\n", node, Swords.size());
-	//Swords.erase(Swords.begin(), Swords.end());
-	//MapRecordsToSend(0, 1, 2);
-	//printf("<n%02d> Send Size %d\n", node, Swords.size());
-
 	// Clean-up and Check.
 	for(i = 0; i < nMappers; i++)
 	{
@@ -1001,7 +1000,7 @@ int main(int argc, char* argv[])
 	printf("<n%02d> Total Elapsed Time is %fs\n", node, time1);
 	
 	for(i = 0; i < 20; i++) free(ifiles[i]);
-	for(i = 0; i < 20; i++) free(ofiles[i]);
+	for(i = 0; i < nWriters; i++) free(ofiles[i]);
 
 	omp_destroy_lock(&l0);
 	omp_destroy_lock(&l1);
@@ -1015,7 +1014,7 @@ int main(int argc, char* argv[])
 }
 else
 {
-	printf("<n%02d> : Hello!\n", node);
+	printf("<n%02d> : No Work To DO!\n", node);
 	usleep(500);
 }
 
@@ -1030,66 +1029,15 @@ else
 	free(msrc);
 	free(csrc);
 	free(wsrc);
+	free(nMi);
+	free(nMj);
+	free(nC);
+	free(receivecount);
 
-/*
-// Debug Code for Sending Constant Character Messages.
-   if(node == 0)
-   {
-      char* word1;
-	   char* word2;
+	MPI_Type_free(&MPI_RECORDS_TYPE);
 
-	   word1 = (char*) malloc(27*sizeof(char));
-	   word2 = (char*) malloc(27*sizeof(char));
-	   strcpy(word1, "THE");
-	   printf("%d ..\n", strlen(word1));
-	   strcpy(word2, "thE");
-	   printf("%d ..\n", strlen(word2));
-	   if(strcasecmp(word1, word2) == 0) printf("MATCH\n");
-	   else printf("MISMATCH\n");
-	   MPI_Send(word2, 27, MPI_CHAR, 1, 1, MPI_COMM_WORLD);
-		free(word1);
-		free(word2);
-   }
-   else
-   {
-	   int count;
-	   char* word1;
-	   MPI_Probe(0, 1, MPI_COMM_WORLD, &requeststats);
-	   MPI_Get_count(&requeststats, MPI_CHAR, &count);
-	   word1 = (char*) malloc(count*sizeof(char));
-	   MPI_Recv(word1, count, MPI_CHAR, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-	   printf("Recvd %d, %d .. %s\n", count, strlen(word1), word1);
-	   free(word1);
-   }
-*/
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	MPI_Finalize();
 	return 0;
 }
-
-
-
-
-//void MapRecordsToReducers(int mt, int ct)
-//{
-//	Lrecords::iterator it1;
-//	Lrecords::iterator it2;
-//	record t1;
-//	int i;
-//
-//	for(i = ct; i < 128; i = i+nReducers)
-//	{
-//		it1 = W[mt].wmap[i].begin();
-//		it2 = W[mt].wmap[i].end();
-//
-//		while(it1 != it2)
-//		{
-//		   t1.words = (char*) malloc((strlen((*it1).words)+1) * sizeof(char));
-//		   strcpy(t1.words, (*it1).words);
-//		   t1.wc = (*it1).wc;
-//		   Crecords[ct].push_back(t1);
-//		   ++it1;
-//		}
-//	}
-//}
