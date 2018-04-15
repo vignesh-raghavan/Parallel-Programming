@@ -95,7 +95,7 @@ typedef struct wordarray
 
 typedef vector<wordarray> Lwords;
 
-Lwords Swords, Rwords;
+Lwords Swords[10][40], Rwords[20];
 
 // Helper Functions.
 void pushRQ(Qreader *rQ, char* s)
@@ -313,7 +313,7 @@ void MapRecordsAndReduce(int mt, int ct)
 	Lrecords::iterator it3;
 	Lrecords::iterator it4;
 
-	for(i = ct; i < 128; i = i+nReducers)
+	for(i = (node*nReducers + ct); i < 128; i += (P*nReducers))
 	{
 		it1 = W[mt].wmap[i].begin();
 		it2 = W[mt].wmap[i].end();
@@ -344,57 +344,41 @@ void MapRecordsAndReduce(int mt, int ct)
 	}
 }
 
-/* Not USED Anymore...
 void ReduceRecords(int ct)
 {
 	Lrecords::iterator it1;
 	Lrecords::iterator it2;
-	Lrecords::iterator it3;
+	wordarray w;
+	record t;
    int i;
 
 	i = 0;
-
-	it1 = Crecords[ct].begin();
-	it3 = Crecords[ct].end();
-	
-	while(it1 != it3)
+	while(!Rwords[ct].empty())
 	{
-		if((*it1).wc > 0)
-		{
-			it2 = it1+1;
-		   while(it2 != it3)
-		   {
-				if((*it2).wc > 0)
-				{
-			      if(strcasecmp((*it1).words, (*it2).words) == 0)
-		   	   {
-		   	   	(*it1).wc += (*it2).wc;
-		   	   	(*it2).wc = 0;
-		   	   }
-				}
-		   	++it2;
-		   }
-		   ++i;
-		}
-		++it1;
-	}
-	//printf("<n%02d> %02d, %d\n", node, omp_get_thread_num(), i);
+		it1 = Crecords[ct].begin();
+		it2 = Crecords[ct].end();
+		w = Rwords[ct].back();
 
-	i = 0;
-	it1 = Crecords[ct].begin();
-	it3 = Crecords[ct].end();
-
-	while(it1 != it3)
-	{
-		if((*it1).wc > 0)
-		{
-			Urecords[ct].push_back((*it1));
-		   ++i;
-		}
-		++it1;
+	   while(it1 != it2)
+	   {
+	   	if(strcasecmp((*it1).words, w.word) == 0)
+	   	{
+	   		(*it1).wc += w.wc;
+	   		break;
+	   	}
+	   	++it1;
+	   }
+	   if(it1 == it2)
+	   {
+	   	t.words = (char*) malloc((strlen(w.word)+1)*sizeof(char));
+	   	strcpy(t.words, w.word);
+	   	t.wc = w.wc;
+	   	Crecords[ct].push_back(t);
+	   	++i;
+	   }
+		Rwords[ct].pop_back();
 	}
-	//printf("<n%02d> %02d, %d\n", node, omp_get_thread_num(), i);
-}*/
+}
 
 
 void DestroyReducerRecords(int ct)
@@ -437,14 +421,14 @@ int FindRecord(char* test, int ct)
 }
 
 
-void MapRecordsToSend(int mt, int pid, int P)
+void MapRecordsToSend(int mt, int pid, int ct)
 {
 	Lrecords::iterator it1;
 	Lrecords::iterator it2;
 	int i;
 	wordarray record1;
 
-	for(i = pid; i < 128; i += P)
+	for(i = (pid*nReducers + ct); i < 128; i += (P*nReducers))
 	{
 		it1 = W[mt].wmap[i].begin();
 		it2 = W[mt].wmap[i].end();
@@ -453,7 +437,7 @@ void MapRecordsToSend(int mt, int pid, int P)
 		{
 			record1.wc = (*it1).wc;
 			strcpy(record1.word, (*it1).words);
-			Swords.push_back(record1);
+			Swords[mt][(pid*nReducers + ct)].push_back(record1);
 			++it1;
 		}
 	}
@@ -462,11 +446,6 @@ void MapRecordsToSend(int mt, int pid, int P)
 }
 
 
-void MapRecordsReceived(int ct)
-{
-	Lrecords::iterator it1;
-	Lrecords::iterator it2;
-}
 
 int main(int argc, char* argv[])
 {
@@ -494,8 +473,9 @@ int main(int argc, char* argv[])
 	int* ReadIDs;
 	int readalldone;
 
-	int sdone, nS, ssrc;
-	int nQ, receivecount;
+	int sdone, nSi, nSj, ssrc;
+	int nMi[20], nMj[20];
+	int nC[20], receivecount[20];
 
 	int provided;
 
@@ -507,8 +487,9 @@ int main(int argc, char* argv[])
 	printf("<n%02d> Thread Support %d\n", node, MPI_THREAD_MULTIPLE);
 	printf("<n%02d> Thread Support %d\n", node, provided);
 
+	MPI_Request sendreqs[20];
 	MPI_Status requeststats;
-	MPI_Status receivestats;
+	MPI_Status receivestats[20];
 
 	int blocks[2] = {1, 27};
 	MPI_Datatype type[2] = {MPI_INT, MPI_CHAR};
@@ -747,6 +728,17 @@ int main(int argc, char* argv[])
 						usleep(500);
 					}
 
+					for(nMi[mt] = 0; nMi[mt] < P; nMi[mt]++)
+					{
+						if(nMi[mt] != node)
+						{
+							for(nMj[mt] = 0; nMj[mt] < nReducers; nMj[mt]++)
+							{
+								MapRecordsToSend(mt, nMi[mt], nMj[mt]);
+							}
+						}
+					}
+
 					omp_set_lock(&l7);
 					ENDmap.push(mt);
 					omp_unset_lock(&l7);
@@ -774,7 +766,6 @@ int main(int argc, char* argv[])
 					   {
 					   	if(!allreaddone)
 					   	{
-					   		//MPI_Send(&readrequest, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
 					   		MPI_Send(NULL, 0, MPI_INT, 0, 0, MPI_COMM_WORLD);
 					   		MPI_Recv(ReadIDs, nReaders, MPI_INT, 0, node, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 					   		for(s1 = 0; s1 < nReaders; s1++)
@@ -814,14 +805,21 @@ int main(int argc, char* argv[])
 
 						if(ssrc > -1)
 						{
-							for(nS = 0; nS < P; nS++)
+							nSj = 0;
+							for(nSi = 0; nSi < (nReducers*P); nSi++)
 							{
-								if(nS != node)
+								if((nSi/nReducers) != node)
 								{
-									MapRecordsToSend(ssrc, nS, P);
-									MPI_Send(Swords.data(), Swords.size(), MPI_RECORDS_TYPE, nS, 2, MPI_COMM_WORLD);
-									Swords.clear();
+									MPI_Isend(Swords[ssrc][nSi].data(), Swords[ssrc][nSi].size(), MPI_RECORDS_TYPE, (nSi/nReducers), (100+nSi), MPI_COMM_WORLD, &sendreqs[nSj]);
+									nSj++;
 								}
+							}
+
+							MPI_Waitall((P-1)*nReducers, sendreqs, MPI_STATUSES_IGNORE);
+
+							for(nSi = 0; nSi < (P*nReducers); nSi++)
+							{
+								Swords[ssrc][nSi].clear();
 							}
 							++sdone;
 						}
@@ -831,24 +829,7 @@ int main(int argc, char* argv[])
 						}
 					}
 					
-				}
-			}
-
-
-			{
-            #pragma omp task // Receiver Thread.
-				{
-					int qt;
-					qt = omp_get_thread_num();
-
-					for(nQ = 0; nQ < (nMappers*(P-1)); nQ++)
-					{
-						MPI_Probe(MPI_ANY_SOURCE, 2, MPI_COMM_WORLD, &receivestats);
-						MPI_Get_count(&receivestats, MPI_RECORDS_TYPE, &receivecount);
-						Rwords.resize(receivecount);
-						MPI_Recv(Rwords.data(), receivecount, MPI_RECORDS_TYPE, receivestats.MPI_SOURCE, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-						Rwords.clear();
-					}
+					printf("<n%02d> Sender %02d : Completed Sends\n", node, sid);
 				}
 			}
 
@@ -885,8 +866,16 @@ int main(int argc, char* argv[])
 						}
 						else usleep(500);
 					}
-					
-					//ReduceRecords(ct);
+
+					for(nC[ct] = 0; nC[ct] < (nMappers*(P-1)); nC[ct]++)
+					{
+						MPI_Probe(MPI_ANY_SOURCE, (100+ct+(node*nReducers)), MPI_COMM_WORLD, &receivestats[ct]);
+						MPI_Get_count(&receivestats[ct], MPI_RECORDS_TYPE, &receivecount[ct]);
+						Rwords[ct].resize(receivecount[ct]);
+						MPI_Recv(Rwords[ct].data(), receivecount[ct], MPI_RECORDS_TYPE, receivestats[ct].MPI_SOURCE, receivestats[ct].MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+						ReduceRecords(ct);
+						Rwords[ct].clear();
+					}
 
 					omp_set_lock(&l5);
 					ENDc.push(ct);
@@ -938,7 +927,6 @@ int main(int argc, char* argv[])
 				readalldone = 0;
 				while(readalldone < P)
 				{
-					//MPI_Recv(&requestreads, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &requeststats);
 					MPI_Recv(NULL, 0, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &requeststats);
 					for(j = 0; j < nReaders; j++)
 					{
@@ -953,7 +941,6 @@ int main(int argc, char* argv[])
 						}
 					}
 					MPI_Send(fileIDs, nReaders, MPI_INT, requeststats.MPI_SOURCE, (requeststats.MPI_SOURCE), MPI_COMM_WORLD);
-					//printf("Send message to %02d\n", requeststats.MPI_SOURCE);
 
 					if(fileIDs[(nReaders-1)] == -1) ++readalldone;
 
@@ -1044,7 +1031,7 @@ else
 	free(csrc);
 	free(wsrc);
 
-
+/*
 // Debug Code for Sending Constant Character Messages.
    if(node == 0)
    {
@@ -1074,6 +1061,7 @@ else
 	   printf("Recvd %d, %d .. %s\n", count, strlen(word1), word1);
 	   free(word1);
    }
+*/
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	MPI_Finalize();
