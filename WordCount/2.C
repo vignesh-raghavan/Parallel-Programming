@@ -137,6 +137,7 @@ char* readFile(string fname, int& cc)
 {
 	int i, j;
 	string line;
+	string longline;
 	char* fdata;
 
 	ifstream fin;
@@ -153,9 +154,14 @@ char* readFile(string fname, int& cc)
 	{
 		getline(fin, line);
 		if(line.empty()) continue;
-		fdata = (char*) malloc((strlen(line.c_str())+1)*sizeof(char));
-		strcpy(fdata, line.c_str());
+		longline += " ";
+		longline += line;
+		//fdata = (char*) malloc((strlen(line.c_str())+1)*sizeof(char));
+		//strcpy(fdata, line.c_str());
 	}
+
+	fdata = (char*) malloc((strlen(longline.c_str()) + 1)*sizeof(char));
+	strcpy(fdata, longline.c_str());
 
 	cc = strlen(fdata);
 
@@ -468,9 +474,6 @@ int main(int argc, char* argv[])
 	MPI_Comm_rank(MPI_COMM_WORLD, &node);
 	MPI_Comm_size(MPI_COMM_WORLD, &P);
 
-	printf("<n%02d> Thread Support %d\n", node, MPI_THREAD_MULTIPLE);
-	printf("<n%02d> Thread Support %d\n", node, provided);
-
 
 	int blocks[2] = {1, 27};
 	MPI_Datatype type[2] = {MPI_INT, MPI_CHAR};
@@ -529,8 +532,9 @@ int main(int argc, char* argv[])
 	nC = (int*) malloc(nReducers*sizeof(int));
 	receivecount = (int*) malloc(nReducers*sizeof(int));
 
+
 	char* ifiles[20];
-	char* ofiles[nWriters];
+	char* ofiles[20];
    char* fname[nReaders]; // Dynamic File names for Reader.
    char* lines[nReaders]; // Single Line in a file.
 	
@@ -553,10 +557,10 @@ int main(int argc, char* argv[])
 	j = 0;
 	for(i = 0; i < 20; i++)
 	{
+		ofiles[i] = (char*) malloc(20*sizeof(char));
 		if(i%P != node) continue;
 
 		{
-		   ofiles[j] = (char*) malloc(20*sizeof(char));
 		   strcpy(ofiles[j], "Output/");
 		   sprintf(fid, "%d", (i+1));
 		   strcat(ofiles[j], fid);
@@ -565,13 +569,18 @@ int main(int argc, char* argv[])
 			j++;
 		}
 	}
-
+	
 	for(i = 0; i < nWriters; i++)
 	{
 		fout.open(ofiles[i], ios::out);
 		fout.close();
 	}
+	
+	printf("<n%02d> Thread Support %d\n", node, MPI_THREAD_MULTIPLE);
+	printf("<n%02d> Thread Support %d\n", node, provided);
 
+	MPI_Barrier(MPI_COMM_WORLD);
+	
 	if(node < P)
 	{
 	omp_init_lock(&l0);
@@ -582,9 +591,6 @@ int main(int argc, char* argv[])
 	omp_init_lock(&l5);
 	omp_init_lock(&l6);
 	omp_init_lock(&l7);
-
-
-	MPI_Barrier(MPI_COMM_WORLD);
 
 	omp_set_num_threads(20);
    #pragma omp parallel
@@ -1000,7 +1006,7 @@ int main(int argc, char* argv[])
 	printf("<n%02d> Total Elapsed Time is %fs\n", node, time1);
 	
 	for(i = 0; i < 20; i++) free(ifiles[i]);
-	for(i = 0; i < nWriters; i++) free(ofiles[i]);
+	for(i = 0; i < 20; i++) free(ofiles[i]);
 
 	omp_destroy_lock(&l0);
 	omp_destroy_lock(&l1);
