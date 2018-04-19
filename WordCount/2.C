@@ -23,6 +23,7 @@ int nWriters;
 
 char* mdata[20]; // Store a Long String in Mapper.
 
+// STL based FIFO implementation.
 typedef queue<char*, list<char*> > Qreader;
 Qreader rQ1;
 
@@ -34,11 +35,10 @@ int tc2;
 int uw1;
 int uw2;
 int uw3;
-int* rsize;
 
 int* msrc; // SRC queue number for Mapper.
-int* csrc; // SRC queue number for Mapper.
-int* wsrc; // SRC queue number for Mapper.
+int* csrc; // SRC queue number for Reducer.
+int* wsrc; // SRC queue number for Writer.
 
 omp_lock_t l0;
 omp_lock_t l1;
@@ -54,7 +54,6 @@ typedef struct record
 {
 	char* words;
 	int wc;
-	//char words[27]; //Max is 26 character string.
 } record;
 
 // List of records.
@@ -71,8 +70,9 @@ wfreq W[20];
 
 // Record List Array for each reducer.
 Lrecords Crecords[20];
-//Lrecords Urecords[20];
 
+
+// <word, word-count> as a fixed contigous array.
 typedef struct wordarray
 {
 	int wc;
@@ -81,12 +81,15 @@ typedef struct wordarray
 
 typedef vector<wordarray> Lwords;
 
+// Vector of words(wordcounts) used for each reducer in same/different nodes.
 Lwords Swords[4][160], Rwords[20];
 
 
 
 
 // Helper Functions.
+
+// Push STL based FIFO implementation.
 void pushRQ(Qreader *rQ, char* s)
 {
 	char* str = (char*) malloc((strlen(s)+1)*sizeof(char));
@@ -95,6 +98,7 @@ void pushRQ(Qreader *rQ, char* s)
 	(*rQ).push(str);	
 }
 
+// Pop STL based FIFO implementation.
 char* popRQ(Qreader *rQ)
 {
 	char* str;
@@ -107,6 +111,7 @@ char* popRQ(Qreader *rQ)
 	return str;
 }
 
+// Full condition for STL based FIFO implementation.
 int isRQfull(Qreader *rQ)
 {
 	if((*rQ).size() >= (2*nReaders)) return 1;
@@ -114,6 +119,7 @@ int isRQfull(Qreader *rQ)
 }
 
 
+// Case-insensitive hashing for word map.
 int H(char* x)
 {
 	int i;
@@ -133,6 +139,7 @@ int H(char* x)
 }
 
 
+// Read all lines in a file into a single sentence.
 char* readFile(string fname, int& cc)
 {
 	int i, j;
@@ -169,6 +176,8 @@ char* readFile(string fname, int& cc)
 	return fdata;
 }
 
+
+// Write the reducer record into a file.
 int writeFile(string fname, int ct)
 {
 	Lrecords::iterator it1;
@@ -213,6 +222,7 @@ int writeFile(string fname, int ct)
 }
 
 
+// Destroy the Mapper hash bucket.
 void DestroyWordFrequency(int mt)
 {
 	int i;
@@ -236,6 +246,8 @@ void DestroyWordFrequency(int mt)
 }
 
 
+// Breaks a long sentence into words and maps the word and its wordcount
+// in the corresponding mapper hash bucket in a thread-safe manner.
 void CreateWordFrequency(int mt)
 {
 	char* word;
@@ -299,6 +311,8 @@ void CreateWordFrequency(int mt)
 }
 
 
+
+// Not USED anymore for MPI-OpenMP Hybrid implementation.
 void MapRecordsAndReduce(int mt, int ct)
 {
 	Lrecords::iterator it1;
@@ -339,6 +353,10 @@ void MapRecordsAndReduce(int mt, int ct)
 	}
 }
 
+
+
+
+// Reduce the records received from another node. (Overloaded Function)
 void ReduceRecords(int ct)
 {
 	Lrecords::iterator it1;
@@ -375,6 +393,9 @@ void ReduceRecords(int ct)
 	}
 }
 
+
+
+// Reduce the records from the same node after receiving a MPI Ping. (Overloaded Function)
 void ReduceRecords(int ct, int csrc)
 {
 	Lrecords::iterator it1;
@@ -411,6 +432,8 @@ void ReduceRecords(int ct, int csrc)
 	}
 }
 
+
+// Destroy the records of the reducer.
 void DestroyReducerRecords(int ct)
 {
 	Lrecords::iterator it1;
@@ -449,6 +472,7 @@ int FindRecord(char* test, int ct)
 }
 
 
+// Map the mapper records to reducers of same/different nodes.
 void MapRecordsToSend(int mt, int pid, int ct)
 {
 	Lrecords::iterator it1;
@@ -479,9 +503,10 @@ int main(int argc, char* argv[])
 {
 	int i, j, k, l, r1, m1, c1, w1;
 	int rdone;
-	int* mdone;
+	//int* mdone;
 	int cdone;
-	int q;
+	//int q;
+   int* rsize;
 	
 	char fid[2];
 	char* test;
@@ -537,21 +562,21 @@ int main(int argc, char* argv[])
 	}
 
    typedef queue<int, list<int> > Qid;
-   Qid gQids; // File Queue numbers for Reader.
+   Qid gQids; // File Queue numbers for Master.
    Qid fQids; // File Queue numbers for Reader.
    Qid rQids; // Reader Queue numbers for Mapper.
    
-   Qid ENDf[nReaders];
+   Qid ENDf[nReaders]; // File END detection for Reader.
    Qid ENDr; // Reader END detection for Mapper.
-   Qid ENDm[nReducers]; // Mapper END detection for Reducer.
+   //Qid ENDm[nReducers]; // Mapper END detection for Reducer.
    Qid ENDc; // Reducer END detection for Writer.
-   Qid ENDmap;
+   Qid ENDmap; // Mapper END detection for Sender.
 	
 	MPI_Request sendreqs[(P*nReducers)];
 	MPI_Status requeststats;
 	MPI_Status receivestats[nReducers];
 
-	mdone = (int*) malloc(nReducers*sizeof(int));
+	//mdone = (int*) malloc(nReducers*sizeof(int));
 	fileIDs = (int*) malloc(nReaders*sizeof(int));
 	ReadIDs = (int*) malloc(nReaders*sizeof(int));
 	rcomplete = (int*) malloc(nReaders*sizeof(int));
@@ -571,7 +596,7 @@ int main(int argc, char* argv[])
 	char* ifiles[20];
 	char* ofiles[P*nWriters];
    char* fname[nReaders]; // Dynamic File names for Reader.
-   char* lines[nReaders]; // Single Line in a file.
+   char* lines[nReaders]; // Single long sentence.
 	
 	j = 0;
 	for(i = 0; i < 20; i++)
@@ -794,12 +819,12 @@ int main(int argc, char* argv[])
 					ENDmap.push(mt);
 					omp_unset_lock(&l7);
 					
-					omp_set_lock(&l4);
-					for(q = 0; q < nReducers; q += 1)
-					{
-						ENDm[q].push(mt);
-					}
-					omp_unset_lock(&l4);
+					//omp_set_lock(&l4);
+					//for(q = 0; q < nReducers; q += 1)
+					//{
+					//	ENDm[q].push(mt);
+					//}
+					//omp_unset_lock(&l4);
 					printf("<n%02d> Map %02d :  Total Chars (%d)\n", node, mid, y[mt]);
 				}
 			}
@@ -931,8 +956,8 @@ int main(int argc, char* argv[])
 						if(receivestats[ct].MPI_SOURCE == node)
 						{
 							MPI_Recv(&csrc[ct], 1, MPI_INT, node, receivestats[ct].MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+							//MapRecordsAndReduce(csrc[ct], ct);
 							ReduceRecords(ct, csrc[ct]);
-							// Use Swords[csrc[ct]][(ct+node*nReducers)]
 							Swords[csrc[ct]][(ct+node*nReducers)].clear();
 						}
 						else
@@ -990,7 +1015,7 @@ int main(int argc, char* argv[])
 				}
 			}
 
-			if(node == 0) //Only Master thread in Node 0 distributes filenumbers to reader threads in same/different nodes.
+			if(node == 0) //Only Master thread in Node 0 distributes filenumbers to reader threads in same/different nodes on a MPI Ping.
 			{
 				printf("<n%02d> Number of Files to be processed (%02d)\n", node, gQids.size());
 				readalldone = 0;
@@ -1082,7 +1107,7 @@ else
 	usleep(500);
 }
 
-   free(mdone);
+   //free(mdone);
 	free(fileIDs);
 	free(ReadIDs);
 	free(rcomplete);
