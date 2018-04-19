@@ -81,7 +81,7 @@ typedef struct wordarray
 
 typedef vector<wordarray> Lwords;
 
-Lwords Swords[10][40], Rwords[20];
+Lwords Swords[4][160], Rwords[20];
 
 
 
@@ -375,6 +375,41 @@ void ReduceRecords(int ct)
 	}
 }
 
+void ReduceRecords(int ct, int csrc)
+{
+	Lrecords::iterator it1;
+	Lrecords::iterator it2;
+	wordarray w;
+	record t;
+   int i;
+
+	i = 0;
+	while(!Swords[csrc][(ct+node*nReducers)].empty())
+	{
+		it1 = Crecords[ct].begin();
+		it2 = Crecords[ct].end();
+	   w = Swords[csrc][(ct+node*nReducers)].back();
+
+	   while(it1 != it2)
+	   {
+	   	if(strcasecmp((*it1).words, w.word) == 0)
+	   	{
+	   		(*it1).wc += w.wc;
+	   		break;
+	   	}
+	   	++it1;
+	   }
+	   if(it1 == it2)
+	   {
+	   	t.words = (char*) malloc((strlen(w.word)+1)*sizeof(char));
+	   	strcpy(t.words, w.word);
+	   	t.wc = w.wc;
+	   	Crecords[ct].push_back(t);
+	   	++i;
+	   }
+	   Swords[csrc][(ct+node*nReducers)].pop_back();
+	}
+}
 
 void DestroyReducerRecords(int ct)
 {
@@ -534,7 +569,7 @@ int main(int argc, char* argv[])
 
 
 	char* ifiles[20];
-	char* ofiles[20];
+	char* ofiles[P*nWriters];
    char* fname[nReaders]; // Dynamic File names for Reader.
    char* lines[nReaders]; // Single Line in a file.
 	
@@ -554,8 +589,13 @@ int main(int argc, char* argv[])
 		}
 	}
 
+	for(i = 0; i < 40; i++)
+	{
+		if(node == 0) gQids.push(i%20);
+	}
+
 	j = 0;
-	for(i = 0; i < 20; i++)
+	for(i = 0; i < (P*nWriters); i++)
 	{
 		ofiles[i] = (char*) malloc(20*sizeof(char));
 		if(i%P != node) continue;
@@ -741,7 +781,7 @@ int main(int argc, char* argv[])
 
 					for(nMi[mt] = 0; nMi[mt] < P; nMi[mt]++)
 					{
-						if(nMi[mt] != node)
+						//if(nMi[mt] != node)
 						{
 							for(nMj[mt] = 0; nMj[mt] < nReducers; nMj[mt]++)
 							{
@@ -824,13 +864,19 @@ int main(int argc, char* argv[])
 									MPI_Isend(Swords[ssrc][nSi].data(), Swords[ssrc][nSi].size(), MPI_RECORDS_TYPE, (nSi/nReducers), (100+nSi), MPI_COMM_WORLD, &sendreqs[nSj]);
 									nSj++;
 								}
+								else
+								{
+									MPI_Isend(&ssrc, 1, MPI_INT, (nSi/nReducers), (100+nSi), MPI_COMM_WORLD, &sendreqs[nSj]);
+									nSj++;
+								}
 							}
 
-							MPI_Waitall((P-1)*nReducers, sendreqs, MPI_STATUSES_IGNORE);
+							//MPI_Waitall((P-1)*nReducers, sendreqs, MPI_STATUSES_IGNORE);
+							MPI_Waitall(P*nReducers, sendreqs, MPI_STATUSES_IGNORE);
 
 							for(nSi = 0; nSi < (P*nReducers); nSi++)
 							{
-								Swords[ssrc][nSi].clear();
+								if((nSi/nReducers) != node) Swords[ssrc][nSi].clear();
 							}
 							++sdone;
 						}
@@ -857,35 +903,46 @@ int main(int argc, char* argv[])
 					++c1;
 					omp_unset_lock(&l4);
 
-					mdone[ct] = 0;
-					while(mdone[ct] < nMappers)
-					{
-						omp_set_lock(&l4);
-						if(!ENDm[ct].empty())
-						{
-							++mdone[ct];
-							csrc[ct] = ENDm[ct].front();
-							ENDm[ct].pop();
-						}
-						else csrc[ct] = -1;
-						omp_unset_lock(&l4);
+					//mdone[ct] = 0;
+					//while(mdone[ct] < nMappers)
+					//{
+					//	omp_set_lock(&l4);
+					//	if(!ENDm[ct].empty())
+					//	{
+					//		++mdone[ct];
+					//		csrc[ct] = ENDm[ct].front();
+					//		ENDm[ct].pop();
+					//	}
+					//	else csrc[ct] = -1;
+					//	omp_unset_lock(&l4);
 
-						if(csrc[ct] > -1)
-						{
-							//printf("C %02d : From %d\n", cid, csrc[ct]);
-							MapRecordsAndReduce(csrc[ct], ct);
-						}
-						else usleep(500);
-					}
+					//	if(csrc[ct] > -1)
+					//	{
+					//		//printf("C %02d : From %d\n", cid, csrc[ct]);
+					//		MapRecordsAndReduce(csrc[ct], ct);
+					//	}
+					//	else usleep(500);
+					//}
 
-					for(nC[ct] = 0; nC[ct] < (nMappers*(P-1)); nC[ct]++)
+					//for(nC[ct] = 0; nC[ct] < (nMappers*(P-1)); nC[ct]++)
+					for(nC[ct] = 0; nC[ct] < (nMappers*P); nC[ct]++)
 					{
 						MPI_Probe(MPI_ANY_SOURCE, (100+ct+(node*nReducers)), MPI_COMM_WORLD, &receivestats[ct]);
-						MPI_Get_count(&receivestats[ct], MPI_RECORDS_TYPE, &receivecount[ct]);
-						Rwords[ct].resize(receivecount[ct]);
-						MPI_Recv(Rwords[ct].data(), receivecount[ct], MPI_RECORDS_TYPE, receivestats[ct].MPI_SOURCE, receivestats[ct].MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-						ReduceRecords(ct);
-						Rwords[ct].clear();
+						if(receivestats[ct].MPI_SOURCE == node)
+						{
+							MPI_Recv(&csrc[ct], 1, MPI_INT, node, receivestats[ct].MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+							ReduceRecords(ct, csrc[ct]);
+							// Use Swords[csrc[ct]][(ct+node*nReducers)]
+							Swords[csrc[ct]][(ct+node*nReducers)].clear();
+						}
+						else
+						{
+						   MPI_Get_count(&receivestats[ct], MPI_RECORDS_TYPE, &receivecount[ct]);
+						   Rwords[ct].resize(receivecount[ct]);
+						   MPI_Recv(Rwords[ct].data(), receivecount[ct], MPI_RECORDS_TYPE, receivestats[ct].MPI_SOURCE, receivestats[ct].MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+						   ReduceRecords(ct);
+						   Rwords[ct].clear();
+						}
 					}
 
 					omp_set_lock(&l5);
@@ -935,6 +992,7 @@ int main(int argc, char* argv[])
 
 			if(node == 0) //Only Master thread in Node 0 distributes filenumbers to reader threads in same/different nodes.
 			{
+				printf("<n%02d> Number of Files to be processed (%02d)\n", node, gQids.size());
 				readalldone = 0;
 				while(readalldone < P)
 				{
@@ -1006,7 +1064,7 @@ int main(int argc, char* argv[])
 	printf("<n%02d> Total Elapsed Time is %fs\n", node, time1);
 	
 	for(i = 0; i < 20; i++) free(ifiles[i]);
-	for(i = 0; i < 20; i++) free(ofiles[i]);
+	for(i = 0; i < (P*nWriters); i++) free(ofiles[i]);
 
 	omp_destroy_lock(&l0);
 	omp_destroy_lock(&l1);
