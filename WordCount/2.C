@@ -82,7 +82,7 @@ typedef struct wordarray
 typedef vector<wordarray> Lwords;
 
 // Vector of words(wordcounts) used for each reducer in same/different nodes.
-Lwords Swords[4][160], Rwords[20];
+Lwords Swords[8][160], Rwords[20];
 
 
 
@@ -115,6 +115,7 @@ char* popRQ(Qreader *rQ)
 int isRQfull(Qreader *rQ)
 {
 	if((*rQ).size() >= (2*nReaders)) return 1;
+	//if((*rQ).size() >= (nReaders)) return 1;
 	else return 0;
 }
 
@@ -157,6 +158,8 @@ char* readFile(string fname, int& cc)
 	}
 
 	i = 0;
+	//printf("%02d+\n", omp_get_thread_num());
+	//omp_set_lock(&l7);
 	while(!fin.eof())
 	{
 		getline(fin, line);
@@ -169,6 +172,8 @@ char* readFile(string fname, int& cc)
 
 	fdata = (char*) malloc((strlen(longline.c_str()) + 1)*sizeof(char));
 	strcpy(fdata, longline.c_str());
+	//omp_unset_lock(&l7);
+	//printf("%02d-\n", omp_get_thread_num());
 
 	cc = strlen(fdata);
 
@@ -307,7 +312,7 @@ void CreateWordFrequency(int mt)
 	omp_unset_lock(&l3);
 
 	free(sentence);
-	printf("<n%02d> Map %02d : Unique Words (%d)\n", node, omp_get_thread_num(), nUniqueWords);
+	//printf("<n%02d> Map %02d : Unique Words (%d)\n", node, omp_get_thread_num(), nUniqueWords);
 }
 
 
@@ -501,7 +506,7 @@ void MapRecordsToSend(int mt, int pid, int ct)
 
 int main(int argc, char* argv[])
 {
-	int i, j, k, l, r1, m1, c1, w1;
+	int i, j, k, l, r1, m1, c1, w1, master;
 	int rdone;
 	//int* mdone;
 	int cdone;
@@ -511,7 +516,9 @@ int main(int argc, char* argv[])
 	char fid[2];
 	char* test;
 	int check;
-	double time1;
+	double time1, time2, time3, time4, time5;
+	double fmapreadytime, lmapreadytime;
+
 
 	ofstream fout;
 
@@ -546,12 +553,12 @@ int main(int argc, char* argv[])
 	MPI_Type_struct(2, blocks, disp, type, &MPI_RECORDS_TYPE);
 	MPI_Type_commit(&MPI_RECORDS_TYPE);
 
-	if(argc == 5)
+	if(argc == 4)
 	{
 		nReaders = atoi(argv[1]);
 		nMappers = atoi(argv[2]);
 		nReducers = atoi(argv[3]);
-		nWriters = atoi(argv[4]);
+		nWriters = nReaders;       //Readers are idle once they are done and can be used for writing.
 	}
 	else
 	{
@@ -577,8 +584,8 @@ int main(int argc, char* argv[])
 	MPI_Status receivestats[nReducers];
 
 	//mdone = (int*) malloc(nReducers*sizeof(int));
-	fileIDs = (int*) malloc(nReaders*sizeof(int));
-	ReadIDs = (int*) malloc(nReaders*sizeof(int));
+	fileIDs = (int*) malloc(2*nReaders*sizeof(int));
+	ReadIDs = (int*) malloc(2*nReaders*sizeof(int));
 	rcomplete = (int*) malloc(nReaders*sizeof(int));
 	x = (int*) malloc(nReaders*sizeof(int));
 	y = (int*) malloc(nMappers*sizeof(int));
@@ -591,6 +598,9 @@ int main(int argc, char* argv[])
 	nMj = (int*) malloc(nMappers*sizeof(int));
 	nC = (int*) malloc(nReducers*sizeof(int));
 	receivecount = (int*) malloc(nReducers*sizeof(int));
+	double *readtime = (double*) malloc(nReaders*sizeof(double));
+	double *maptime = (double*) malloc(nMappers*sizeof(double));
+	double *mapidletime = (double*) malloc(nMappers*sizeof(double));
 
 
 	char* ifiles[20];
@@ -614,7 +624,7 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	for(i = 0; i < 40; i++)
+	for(i = 0; i < 80; i++)
 	{
 		if(node == 0) gQids.push(i%20);
 	}
@@ -641,8 +651,8 @@ int main(int argc, char* argv[])
 		fout.close();
 	}
 	
-	printf("<n%02d> Thread Support %d\n", node, MPI_THREAD_MULTIPLE);
-	printf("<n%02d> Thread Support %d\n", node, provided);
+	//printf("<n%02d> Thread Support %d\n", node, MPI_THREAD_MULTIPLE);
+	//printf("<n%02d> Thread Support %d\n", node, provided);
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	
@@ -662,6 +672,7 @@ int main(int argc, char* argv[])
 	{
 		#pragma omp master
 		{
+			master = omp_get_thread_num();
 			r1 = 0;
 			m1 = 0;
 			c1 = 0;
@@ -672,6 +683,8 @@ int main(int argc, char* argv[])
 			rdone = 0;
 			cdone = 0;
 			allreaddone = 0;
+			fmapreadytime = 0.0;
+			lmapreadytime = 0.0;
 			printf("<n%02d> of %02d Master %02d : ", node, P, omp_get_thread_num());
 			printf("nReaders (%02d); ", nReaders);
          printf("nMappers (%02d); ", nMappers);
@@ -683,7 +696,8 @@ int main(int argc, char* argv[])
 
 			for(i = 0; i < nReaders; i++)
 			{
-			   #pragma omp task // Reader Threads.
+		      //Readers are idle once they are done and can be used for writing.
+			   #pragma omp task // Reader/Writer Threads.
 		      {
 		      	int rt, rid;
 		         rid = omp_get_thread_num();
@@ -695,6 +709,7 @@ int main(int argc, char* argv[])
 
 					x[rt] = 0;
 					rcomplete[rt] = 0;
+					readtime[rt] = MPI_Wtime();
 					while(!rcomplete[rt])
 					{
 					   omp_set_lock(&l0);
@@ -741,12 +756,39 @@ int main(int argc, char* argv[])
 							usleep(500);
 						}
 					}
+					readtime[rt] = MPI_Wtime() - readtime[rt];
 
 					omp_set_lock(&l3);
 					ENDr.push(rt);
 					tc1 += x[rt];
 					omp_unset_lock(&l3);
 					printf("<n%02d> Read %02d : Total Chars (%d)\n", node, rid, x[rt]);
+
+
+
+
+					// Readers are idle once they are done and can be used for writing.
+					z[rt] = 0;
+					while(cdone < nReducers)
+					{
+						omp_set_lock(&l5);
+						if(!ENDc.empty())
+						{
+							wsrc[rt] = ENDc.front();
+							ENDc.pop();
+							++cdone;
+						}
+						else wsrc[rt] = -1;
+						omp_unset_lock(&l5);
+
+						if(wsrc[rt] > -1)
+						{
+							z[rt] += writeFile(ofiles[rt], wsrc[rt]);
+						}
+						else usleep(500);
+					}
+					
+					printf("<n%02d> Writer %02d : Words Written (%d)\n", node, rid, z[rt]);
 		      }
 			}
 
@@ -764,6 +806,8 @@ int main(int argc, char* argv[])
 					omp_unset_lock(&l3);
 					y[mt] = 0;
 				
+					maptime[mt] = 0.0;
+					mapidletime[mt] = -MPI_Wtime();
 					while(rdone < nReaders)
 					{
 						omp_set_lock(&l3);
@@ -779,6 +823,7 @@ int main(int argc, char* argv[])
 						   omp_set_lock(&l4);
 						   if(!rQ1.empty())
 						   {
+								maptime[mt] -= MPI_Wtime();
 						   	mdata[mt] = popRQ(&rQ1);
 					         tc2 += strlen(mdata[mt]);
 						   }
@@ -799,11 +844,13 @@ int main(int argc, char* argv[])
 						      //printf("<n%02d> Map %02d : FROM (%02d) cc %d $$\n", node, mid, msrc[mt], strlen(mdata[mt]));
                      	free(mdata[mt]);
                      	mdata[mt] = NULL;
+								maptime[mt] += MPI_Wtime();
 						   }
 						}
 						usleep(500);
 					}
 
+					maptime[mt] -= MPI_Wtime();
 					for(nMi[mt] = 0; nMi[mt] < P; nMi[mt]++)
 					{
 						//if(nMi[mt] != node)
@@ -814,9 +861,13 @@ int main(int argc, char* argv[])
 							}
 						}
 					}
+					maptime[mt] += MPI_Wtime();
+					mapidletime[mt] += (MPI_Wtime() - maptime[mt]);
 
 					omp_set_lock(&l7);
+					if(!fmapreadytime) fmapreadytime = MPI_Wtime();
 					ENDmap.push(mt);
+					lmapreadytime = MPI_Wtime();
 					omp_unset_lock(&l7);
 					
 					//omp_set_lock(&l4);
@@ -829,12 +880,13 @@ int main(int argc, char* argv[])
 				}
 			}
 
+			if(node == 0)
 			{
             #pragma omp task // Sender Thread.
 				{
 					int sid;
 					sid = omp_get_thread_num();
-
+					
 					while(!allreaddone)
 					{
 					   omp_set_lock(&l0);
@@ -843,8 +895,8 @@ int main(int argc, char* argv[])
 					   	if(!allreaddone)
 					   	{
 					   		MPI_Send(NULL, 0, MPI_INT, 0, 0, MPI_COMM_WORLD);
-					   		MPI_Recv(ReadIDs, nReaders, MPI_INT, 0, node, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-					   		for(s1 = 0; s1 < nReaders; s1++)
+					   		MPI_Recv(ReadIDs, (2*nReaders), MPI_INT, 0, node, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+					   		for(s1 = 0; s1 < (2*nReaders); s1++)
 					   		{
 					   			if(ReadIDs[s1] > -1) fQids.push( ReadIDs[s1] );
 					   			else
@@ -867,7 +919,7 @@ int main(int argc, char* argv[])
 					}
 
 					printf("<n%02d> Sender %02d : Completed Reads\n", node, sid);
-
+					
 					while(sdone < nMappers)
 					{
 						omp_set_lock(&l7);
@@ -979,41 +1031,41 @@ int main(int argc, char* argv[])
 			}
 
 			
-			for(l = 0; l < nWriters; l++)
-			{
-            #pragma omp task // Writer Threads.
-				{
-					int wid, wt;
-					wid = omp_get_thread_num();
+			//for(l = 0; l < nWriters; l++)
+			//{
+         //   #pragma omp task // Writer Threads.
+			//	{
+			//		int wid, wt;
+			//		wid = omp_get_thread_num();
 
-					omp_set_lock(&l6);
-					wt = w1;
-					++w1;
-					omp_unset_lock(&l6);
+			//		omp_set_lock(&l6);
+			//		wt = w1;
+			//		++w1;
+			//		omp_unset_lock(&l6);
 
-					z[wt] = 0;
-					while(cdone < nReducers)
-					{
-						omp_set_lock(&l5);
-						if(!ENDc.empty())
-						{
-							wsrc[wt] = ENDc.front();
-							ENDc.pop();
-							++cdone;
-						}
-						else wsrc[wt] = -1;
-						omp_unset_lock(&l5);
+			//		z[wt] = 0;
+			//		while(cdone < nReducers)
+			//		{
+			//			omp_set_lock(&l5);
+			//			if(!ENDc.empty())
+			//			{
+			//				wsrc[wt] = ENDc.front();
+			//				ENDc.pop();
+			//				++cdone;
+			//			}
+			//			else wsrc[wt] = -1;
+			//			omp_unset_lock(&l5);
 
-						if(wsrc[wt] > -1)
-						{
-							z[wt] += writeFile(ofiles[wt], wsrc[wt]);
-						}
-						else usleep(500);
-					}
-					
-					printf("<n%02d> Writer %02d : Words Written (%d)\n", node, wid, z[wt]);
-				}
-			}
+			//			if(wsrc[wt] > -1)
+			//			{
+			//				z[wt] += writeFile(ofiles[wt], wsrc[wt]);
+			//			}
+			//			else usleep(500);
+			//		}
+			//		
+			//		printf("<n%02d> Writer %02d : Words Written (%d)\n", node, wid, z[wt]);
+			//	}
+			//}
 
 			if(node == 0) //Only Master thread in Node 0 distributes filenumbers to reader threads in same/different nodes on a MPI Ping.
 			{
@@ -1022,7 +1074,7 @@ int main(int argc, char* argv[])
 				while(readalldone < P)
 				{
 					MPI_Recv(NULL, 0, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &requeststats);
-					for(j = 0; j < nReaders; j++)
+					for(j = 0; j < (2*nReaders); j++)
 					{
 						if(!gQids.empty())
 						{
@@ -1034,12 +1086,92 @@ int main(int argc, char* argv[])
 							fileIDs[j] = -1;
 						}
 					}
-					MPI_Send(fileIDs, nReaders, MPI_INT, requeststats.MPI_SOURCE, (requeststats.MPI_SOURCE), MPI_COMM_WORLD);
+					MPI_Send(fileIDs, (2*nReaders), MPI_INT, requeststats.MPI_SOURCE, (requeststats.MPI_SOURCE), MPI_COMM_WORLD);
 
-					if(fileIDs[(nReaders-1)] == -1) ++readalldone;
+					if(fileIDs[((2*nReaders)-1)] == -1) ++readalldone;
 
 					usleep(500);
 				}
+			}
+			else // Nodes other than node 0.
+			{
+				while(!allreaddone)
+				{
+				   omp_set_lock(&l0);
+				   if(fQids.empty())
+				   {
+				   	if(!allreaddone)
+				   	{
+				   		MPI_Send(NULL, 0, MPI_INT, 0, 0, MPI_COMM_WORLD);
+				   		MPI_Recv(ReadIDs, (2*nReaders), MPI_INT, 0, node, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				   		for(s1 = 0; s1 < (2*nReaders); s1++)
+				   		{
+				   			if(ReadIDs[s1] > -1) fQids.push( ReadIDs[s1] );
+				   			else
+				   			{
+				   				allreaddone = 1;
+				   			}
+				   		}
+							if(allreaddone)
+							{
+							   for(s1 = 0; s1 < nReaders; s1++)
+							   {
+							   	ENDf[s1].push(master);
+							   }
+							}
+				   	}
+				   }
+				   omp_unset_lock(&l0);
+
+				   usleep(500);
+				}
+
+				printf("<n%02d> Sender %02d : Completed Reads\n", node, master);
+				
+				while(sdone < nMappers)
+				{
+					omp_set_lock(&l7);
+					if(!ENDmap.empty())
+					{
+						ssrc = ENDmap.front();
+						ENDmap.pop();
+					}
+					else ssrc = -1;
+					omp_unset_lock(&l7);
+
+					if(ssrc > -1)
+					{
+						nSj = 0;
+						for(nSi = 0; nSi < (P*nReducers); nSi++)
+						{
+							if((nSi/nReducers) != node)
+							{
+								MPI_Isend(Swords[ssrc][nSi].data(), Swords[ssrc][nSi].size(), MPI_RECORDS_TYPE, (nSi/nReducers), (100+nSi), MPI_COMM_WORLD, &sendreqs[nSj]);
+								nSj++;
+							}
+							else
+							{
+								MPI_Isend(&ssrc, 1, MPI_INT, (nSi/nReducers), (100+nSi), MPI_COMM_WORLD, &sendreqs[nSj]);
+								nSj++;
+							}
+						}
+
+						//MPI_Waitall((P-1)*nReducers, sendreqs, MPI_STATUSES_IGNORE);
+						MPI_Waitall(P*nReducers, sendreqs, MPI_STATUSES_IGNORE);
+
+						for(nSi = 0; nSi < (P*nReducers); nSi++)
+						{
+							if((nSi/nReducers) != node) Swords[ssrc][nSi].clear();
+						}
+						++sdone;
+					}
+					else
+					{
+						usleep(500);
+					}
+				}
+				
+				printf("<n%02d> Sender %02d : Completed Sends\n", node, master);
 			}
 
 		}
@@ -1125,6 +1257,48 @@ else
 
 	MPI_Type_free(&MPI_RECORDS_TYPE);
 
+	
+	
+	
+	
+	time2 = readtime[0];
+	for(i = 1; i < nReaders; i++)
+   {
+		if(time2 < readtime[i]) time2 = readtime[i];
+	}
+   time3 = maptime[0];
+   time4 = mapidletime[0];
+	for(i = 1; i < nMappers; i++)
+   {
+		if(time3 < maptime[i]) time3 = maptime[i];
+		if(time4 < mapidletime[i]) time4 = mapidletime[i];
+   }
+	
+   MPI_Barrier(MPI_COMM_WORLD);
+	if(node > 0) MPI_Reduce(&time2, NULL, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+	else MPI_Reduce(MPI_IN_PLACE, &time2, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+	if(node > 0) MPI_Reduce(&time3, NULL, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+	else MPI_Reduce(MPI_IN_PLACE, &time3, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+	if(node > 0) MPI_Reduce(&time4, NULL, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+	else MPI_Reduce(MPI_IN_PLACE, &time4, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+	
+	if(node > 0) MPI_Reduce(&fmapreadytime, NULL, 1, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
+	else MPI_Reduce(MPI_IN_PLACE, &fmapreadytime, 1, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
+	if(node > 0) MPI_Reduce(&lmapreadytime, NULL, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+	else MPI_Reduce(MPI_IN_PLACE, &lmapreadytime, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+	
+   if(node == 0)
+   {
+	   time5 = lmapreadytime - fmapreadytime;
+		printf("<n%02d> Statistics : Max Reader Time %fs\n", node, time2);
+		printf("<n%02d> Statistics : Max Map Busy Time %fs\n", node, time3);
+		printf("<n%02d> Statistics : Max Map Idle Time %fs\n", node, time4);
+		printf("<n%02d> Statistics : First-to-Last MapReady Time %fs\n", node, time5);
+	}
+
+   free(readtime);
+   free(maptime);
+   free(mapidletime);
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	MPI_Finalize();
