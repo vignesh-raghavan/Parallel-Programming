@@ -35,6 +35,7 @@ int tc2;
 int uw1;
 int uw2;
 int uw3;
+int* uw4;
 
 int* msrc; // SRC queue number for Mapper.
 int* csrc; // SRC queue number for Reducer.
@@ -534,6 +535,7 @@ int main(int argc, char* argv[])
 	int sdone, nSi, nSj, ssrc;
 	int *nMi, *nMj;
 	int *nC, *receivecount;
+	int maxuw4;
 
 	int provided;
 
@@ -590,6 +592,7 @@ int main(int argc, char* argv[])
 	x = (int*) malloc(nReaders*sizeof(int));
 	y = (int*) malloc(nMappers*sizeof(int));
 	z = (int*) malloc(nWriters*sizeof(int));
+	uw4 = (int*) malloc(nReducers*sizeof(int));
 	rsize = (int*) malloc(nReaders*sizeof(int));
 	msrc = (int*) malloc(nMappers*sizeof(int));
 	csrc = (int*) malloc(nReducers*sizeof(int));
@@ -1002,6 +1005,7 @@ int main(int argc, char* argv[])
 					//}
 
 					//for(nC[ct] = 0; nC[ct] < (nMappers*(P-1)); nC[ct]++)
+					uw4[ct] = 0;
 					for(nC[ct] = 0; nC[ct] < (nMappers*P); nC[ct]++)
 					{
 						MPI_Probe(MPI_ANY_SOURCE, (100+ct+(node*nReducers)), MPI_COMM_WORLD, &receivestats[ct]);
@@ -1009,6 +1013,7 @@ int main(int argc, char* argv[])
 						{
 							MPI_Recv(&csrc[ct], 1, MPI_INT, node, receivestats[ct].MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 							//MapRecordsAndReduce(csrc[ct], ct);
+							uw4[ct] += Swords[csrc[ct]][(ct+node*nReducers)].size();
 							ReduceRecords(ct, csrc[ct]);
 							Swords[csrc[ct]][(ct+node*nReducers)].clear();
 						}
@@ -1017,6 +1022,7 @@ int main(int argc, char* argv[])
 						   MPI_Get_count(&receivestats[ct], MPI_RECORDS_TYPE, &receivecount[ct]);
 						   Rwords[ct].resize(receivecount[ct]);
 						   MPI_Recv(Rwords[ct].data(), receivecount[ct], MPI_RECORDS_TYPE, receivestats[ct].MPI_SOURCE, receivestats[ct].MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+							uw4[ct] += receivecount[ct];
 						   ReduceRecords(ct);
 						   Rwords[ct].clear();
 						}
@@ -1273,6 +1279,13 @@ else
 		if(time3 < maptime[i]) time3 = maptime[i];
 		if(time4 < mapidletime[i]) time4 = mapidletime[i];
    }
+
+   maxuw4 = 0;
+   for(i = 0; i < nReducers; i++)
+   {
+		if(maxuw4 < uw4[i]) maxuw4 = uw4[i];
+	}
+
 	
    MPI_Barrier(MPI_COMM_WORLD);
 	if(node > 0) MPI_Reduce(&time2, NULL, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
@@ -1286,6 +1299,8 @@ else
 	else MPI_Reduce(MPI_IN_PLACE, &fmapreadytime, 1, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
 	if(node > 0) MPI_Reduce(&lmapreadytime, NULL, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 	else MPI_Reduce(MPI_IN_PLACE, &lmapreadytime, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+	if(node > 0) MPI_Reduce(&maxuw4, NULL, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
+	else MPI_Reduce(MPI_IN_PLACE, &maxuw4, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
 	
    if(node == 0)
    {
@@ -1294,11 +1309,13 @@ else
 		printf("<n%02d> Statistics : Max Map Busy Time %fs\n", node, time3);
 		printf("<n%02d> Statistics : Max Map Idle Time %fs\n", node, time4);
 		printf("<n%02d> Statistics : First-to-Last MapReady Time %fs\n", node, time5);
+		printf("<n%02d> Statistics : Max Mapper->Reducer words %d\n", node, maxuw4);
 	}
 
    free(readtime);
    free(maptime);
    free(mapidletime);
+	free(uw4);
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	MPI_Finalize();
